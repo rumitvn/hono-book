@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chapter 4 — Context &amp;amp; Building Responses · Hono Internals Handbook · RumitX</title>
+<meta name="description" content="A from-the-source handbook on Hono internals — the router (RegExpRouter & TrieRouter), the Context object, the compose middleware onion, runtime adapters, and the type-safe routing & RPC client.">
+<link rel="icon" type="image/svg+xml" href="assets/brand/logo_x.svg">
+<meta name="author" content="RumitX">
+<meta name="theme-color" content="#0B1E2D">
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/code.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<header class="header">
+  <button class="icon-btn" id="menu-btn" aria-label="Open navigation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+  <a class="brand" href="index.html"><span class="mark"><span>X</span></span> Hono Internals Handbook</a>
+  <span class="spacer"></span>
+  <span class="meta-pill">pinned&nbsp;v4.12.25</span>
+  <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+</header>
+<div class="backdrop"></div>
+<div class="shell">
+  <aside class="rail"><nav>
+<a class="brand-mini" href="index.html"><img src="assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
+<h4>Chapters</h4>
+<a class="" href="00-environment-and-typescript-web-refresher.html"><span class="num">00</span><span>Environment &amp; TypeScript / Web-standards Refresher</span></a>
+<a class="" href="01-mental-model-and-repo-map.html"><span class="num">01</span><span>Mental Model &amp; Repo Map</span></a>
+<a class="" href="02-app-lifecycle-and-request.html"><span class="num">02</span><span>The App Object &amp; HonoRequest</span></a>
+<a class="" href="03-the-router.html"><span class="num">03</span><span>The Router</span><span class="flag">★</span></a>
+<a class="active" href="04-context-and-responses.html"><span class="num">04</span><span>Context &amp; Building Responses</span></a>
+<a class="" href="05-the-middleware-onion.html"><span class="num">05</span><span>The Middleware Onion</span></a>
+<a class="" href="06-runtime-adapters-and-portability.html"><span class="num">06</span><span>Runtime Adapters &amp; Portability</span></a>
+<a class="" href="07-typed-routes-rpc-and-validation.html"><span class="num">07</span><span>Typed Routes, the RPC Client &amp; Validation</span></a>
+<a class="" href="08-capstone-extending-and-staying-current.html"><span class="num">08</span><span>Capstone: Extending &amp; Staying Current</span></a>
+<h4>Reference</h4>
+<a class="" href="glossary.html"><span class="num">§</span><span>Glossary &amp; Index</span></a>
+<a href="https://github.com/rumitvn/hono-book" target="_blank" rel="noopener"><span class="num">↗</span><span>GitHub repo</span></a>
+</nav></aside>
+  <main class="content"><article class="article">
+    <div class="crumbs"><a href="index.html">Handbook</a> / Chapter 04</div>
+    <h1 id="chapter-4-context-building-responses">Chapter 4 — Context &amp; Building Responses</h1>
+<div class="callout goal">
+<p><strong>Goal:</strong> Understand the <code>Context</code> object — the <code>c</code> every handler receives — and how <code>c.json()</code>,
+<code>c.text()</code>, and <code>c.html()</code> turn your data into a web-standard <code>Response</code>. Learn the <code>c.env</code> and <code>c.var</code>
+seams that make the same handler portable and stateful. Grounded in <code>honojs/hono</code> at <strong><code>v4.12.25</code></strong>
+(<code>fce483e</code>).</p>
+</div>
+<hr />
+<h2 id="41-why-it-matters">4.1 Why it matters</h2>
+<p><code>c</code> is the one argument your handlers actually use. It's the request, the response builder, the
+environment bindings, and a per-request scratchpad, all in one object. If you understand <code>Context</code>, you
+understand the entire surface area you program against — and you'll see that, like the rest of Hono, it's
+a thin, readable layer over web standards, not a mysterious framework god-object.</p>
+<p>The deeper payoff: knowing <em>when</em> a <code>Response</code> is actually constructed (and when headers are buffered vs.
+committed) is what lets you reason about middleware that modifies responses — the subject of Chapter 5.</p>
+<hr />
+<h2 id="42-mental-model-c-is-a-per-request-envelope">4.2 Mental model: c is a per-request envelope</h2>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>        new Context(request, { path, matchResult, env, executionCtx, … })
+                                  src/context.ts:352
+        ┌──────────────────────────────────────────────────────────┐
+   c.   │  req      → HonoRequest (the incoming request)   :366     │
+        │  env      → runtime bindings (KV, secrets, …)    :315     │
+        │  var/get/set → per-request scratchpad            :546/571 │
+        │  ─────────────────────────────────────────────────────── │
+        │  json/text/html/body → BUILD a Response          :708 …   │
+        │  header/status       → buffer response metadata  :515/529 │
+        │  res / finalized     → the committed Response     :403/317 │
+        └──────────────────────────────────────────────────────────┘
+</code></pre></div></figure>
+
+<p>A fresh <code>Context</code> is created per request in <code>#dispatch</code> (recall <code>src/hono-base.ts:421</code>). It is
+<strong>not</strong> reused across requests — so anything you put on it (<code>c.set(...)</code>) is request-scoped and
+automatically discarded. That isolation is why Hono needs no request-local-storage tricks for the common
+case.</p>
+<hr />
+<h2 id="43-the-two-halves-reading-and-responding">4.3 The two halves: reading and responding</h2>
+<p>Open <code>src/context.ts:293</code> (the class) and <code>:352</code> (the constructor — it just stashes the options). The
+class splits cleanly into a <strong>reading</strong> half and a <strong>responding</strong> half.</p>
+<p><strong>Reading the request and environment:</strong></p>
+<ul>
+<li><code>c.req</code> (<code>src/context.ts:366</code>) — lazily constructs the <code>HonoRequest</code> from Chapter 2. <code>c.req.param('id')</code>,
+  <code>c.req.query('q')</code>, <code>c.req.json()</code>.</li>
+<li><code>c.env</code> (<code>src/context.ts:315</code>) — the runtime's bindings: a Cloudflare Worker's KV namespaces, D1
+  databases, and secrets; environment variables elsewhere. This is the seam where the <em>platform</em> enters
+  your handler. (Chapter 6 goes deep.)</li>
+<li><code>c.set(key, value)</code> (<code>src/context.ts:546</code>) / <code>c.get(key)</code> (<code>src/context.ts:571</code>) — a per-request
+  key/value store backed by a <code>Map</code>. Middleware writes (<code>c.set('user', …)</code>), downstream handlers read
+  (<code>c.get('user')</code>). This is how authentication middleware passes a user object to your route.</li>
+</ul>
+<p><strong>Building the response:</strong></p>
+<ul>
+<li><code>c.json(obj, status?, headers?)</code> (<code>src/context.ts:708</code>)</li>
+<li><code>c.text(str, …)</code> (<code>src/context.ts:682</code>)</li>
+<li><code>c.html(str, …)</code> (<code>src/context.ts:723</code>)</li>
+<li><code>c.body(data, …)</code> (<code>src/context.ts:664</code>)</li>
+<li><code>c.redirect(loc, status?)</code> (<code>src/context.ts:750</code>), <code>c.notFound()</code> (<code>src/context.ts:776</code>)</li>
+</ul>
+<hr />
+<h2 id="44-how-cjson-becomes-a-response">4.4 How <code>c.json()</code> becomes a <code>Response</code></h2>
+<p>This is the moment to dispel any "framework magic." Read the body of <code>c.json</code> (<code>src/context.ts:708</code>):</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="nx">json</span><span class="o">:</span><span class="w"> </span><span class="kt">JSONRespond</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">object</span><span class="p">,</span><span class="w"> </span><span class="nx">arg</span><span class="o">?</span><span class="p">,</span><span class="w"> </span><span class="nx">headers</span><span class="o">?</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="n">#newResponse</span><span class="p">(</span>
+<span class="w">    </span><span class="nb">JSON</span><span class="p">.</span><span class="nx">stringify</span><span class="p">(</span><span class="nx">object</span><span class="p">),</span><span class="w">                                   </span><span class="c1">// serialize</span>
+<span class="w">    </span><span class="nx">arg</span><span class="p">,</span><span class="w">                                                       </span><span class="c1">// status or ResponseInit</span>
+<span class="w">    </span><span class="nx">setDefaultContentType</span><span class="p">(</span><span class="s1">&#39;application/json&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">headers</span><span class="p">)</span><span class="w">         </span><span class="c1">// add content-type if absent</span>
+<span class="w">  </span><span class="p">)</span>
+<span class="p">}</span>
+</code></pre></div></figure>
+
+<p>That's it. <code>c.json({...})</code> is <code>JSON.stringify</code> + a default <code>Content-Type</code> + a call to the private
+<code>#newResponse</code> (<code>src/context.ts:604</code>), which constructs an actual web <code>Response</code>. <code>c.text</code> and <code>c.html</code>
+are the same shape with different defaults (<code>text/plain</code>, <code>text/html</code>). <code>setDefaultContentType</code>
+(<code>src/context.ts:281</code>) only sets the header if you didn't provide one — so you can always override.</p>
+<div class="callout note"><span class="ic">🧠</span>
+<p> <strong>Mental model:</strong> the <code>c.json/text/html</code> family is <em>sugar over <code>new Response()</code></em>. There is no hidden
+response object in Hono — when you call <code>c.json</code>, a real <code>Response</code> is built right then and returned.
+Compare to <code>c.res</code> (<code>src/context.ts:403</code>), which lazily <em>materializes</em> a mutable response for the cases
+where middleware needs to tweak one. Two paths: build-and-return (handlers) vs. lazily-mutate
+(middleware).</p>
+</div>
+<hr />
+<h2 id="45-headers-and-status-buffered-then-committed">4.5 Headers and status: buffered, then committed</h2>
+<p>Why does <code>c.header('x', 'y')</code> work <em>before</em> you call <code>c.json()</code>? Because header and status are
+<strong>buffered</strong> on the context and applied when the response is built:</p>
+<ul>
+<li><code>c.status(code)</code> (<code>src/context.ts:529</code>) stashes the status in a private <code>#status</code> field — it doesn't
+  build anything.</li>
+<li><code>c.header(name, value, options?)</code> (<code>src/context.ts:515</code>) writes into a buffered <code>Headers</code> object — but
+  notice the first lines: <em>if the response is already finalized</em> (<code>src/context.ts:516</code>), it mutates the
+  committed response's headers instead. This dual behavior is what lets both handlers (pre-build) and
+  middleware (post-build) set headers correctly.</li>
+<li><code>c.finalized</code> (<code>src/context.ts:317</code>) flips to <code>true</code> (<code>src/context.ts:433</code>) once a response has been
+  committed. <code>compose</code> checks this flag to decide whether a middleware produced a response — the link into
+  Chapter 5.</li>
+</ul>
+<div class="callout warn"><span class="ic">⚠️</span>
+<p> <strong>Footgun:</strong> order matters for the <em>buffered</em> path. <code>c.status(201)</code> then <code>return c.json(obj)</code> →
+201. But <code>return c.json(obj)</code> <em>then</em> <code>c.status(201)</code> is too late — the response was already built with the
+default 200. The buffering is one-way: set metadata, <em>then</em> build the body.</p>
+</div>
+<hr />
+<h2 id="46-cenv-and-cvar-the-portability-and-state-seams">4.6 <code>c.env</code> and <code>c.var</code>: the portability and state seams</h2>
+<p>Two small properties carry a lot of weight:</p>
+<p><strong><code>c.env</code></strong> is how the <em>runtime</em> reaches your code without your code naming the runtime. On Workers,
+<code>c.env.MY_KV</code> is a KV binding; on Node, you'd read <code>process.env</code>. Your handler says <code>c.env.DATABASE</code> and
+stays runtime-agnostic — the adapter (Chapter 6) decides what <code>env</code> actually is. This is the single most
+important property for the web→native story.</p>
+<p><strong><code>c.var</code></strong> (and <code>c.set</code>/<code>c.get</code>) is typed per-request state. With TypeScript, you declare what lives there
+via the <code>Variables</code> half of your <code>Env</code> type, and <code>c.get('user')</code> is typed. It's a <code>Map</code> under the hood
+(<code>src/context.ts:546</code>) — nothing exotic — but the typing makes middleware→handler hand-offs safe.</p>
+<hr />
+<h2 id="47-lab-4-the-middleware-handler-handoff">4.7 Lab 4 — the middleware → handler handoff</h2>
+<p>Prove the buffered-header rule and the <code>c.set</code>/<code>c.get</code> channel in one probe (reuse <code>hono-hello</code>):</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// ctx-probe.ts</span>
+<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Hono</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono&#39;</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Hono</span><span class="o">&lt;</span><span class="p">{</span><span class="w"> </span><span class="nx">Variables</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">reqId</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="o">&gt;</span><span class="p">()</span>
+
+<span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="s1">&#39;*&#39;</span><span class="p">,</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">next</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">c</span><span class="p">.</span><span class="nx">set</span><span class="p">(</span><span class="s1">&#39;reqId&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;abc-123&#39;</span><span class="p">)</span><span class="w">          </span><span class="c1">// middleware writes per-request state  (:546)</span>
+<span class="w">  </span><span class="nx">c</span><span class="p">.</span><span class="nx">header</span><span class="p">(</span><span class="s1">&#39;x-powered-by&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;hono-book&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">next</span><span class="p">()</span>
+<span class="w">  </span><span class="nx">c</span><span class="p">.</span><span class="nx">header</span><span class="p">(</span><span class="s1">&#39;x-after&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;yes&#39;</span><span class="p">)</span><span class="w">          </span><span class="c1">// set AFTER next(): response is finalized → mutates committed headers (:516)</span>
+<span class="p">})</span>
+
+<span class="nx">app</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">c</span><span class="p">.</span><span class="nx">status</span><span class="p">(</span><span class="mf">201</span><span class="p">)</span><span class="w">                       </span><span class="c1">// buffer status BEFORE building body</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">({</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="kt">c.get</span><span class="p">(</span><span class="s1">&#39;reqId&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">})</span><span class="w">   </span><span class="c1">// reads middleware&#39;s value         (:571)</span>
+<span class="p">})</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">res</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">app</span><span class="p">.</span><span class="nx">request</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">)</span>
+<span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">res</span><span class="p">.</span><span class="nx">status</span><span class="p">,</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">res</span><span class="p">.</span><span class="nx">json</span><span class="p">())</span>
+<span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;powered-by:&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">res</span><span class="p">.</span><span class="nx">headers</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">&#39;x-powered-by&#39;</span><span class="p">),</span><span class="w"> </span><span class="s1">&#39;| after:&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">res</span><span class="p">.</span><span class="nx">headers</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">&#39;x-after&#39;</span><span class="p">))</span>
+</code></pre></div></figure>
+
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">bash</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>bun<span class="w"> </span>run<span class="w"> </span>ctx-probe.ts
+</code></pre></div></figure>
+
+<div class="callout lab"><span class="ic">🧪</span>
+<p> <strong>Record in <code>labs/lab4-context.md</code>:</strong> the status, body, and both headers. Expected: <code>201
+{"id":"abc-123"}</code>, and <em>both</em> <code>x-powered-by</code> and <code>x-after</code> present. The <code>x-after</code> header — set <em>after</em>
+<code>await next()</code> — proves the §4.5 dual path: once finalized, <code>c.header</code> mutates the committed response.
+Now swap the order in the handler (<code>return c.json(...)</code> then <code>c.status(201)</code>) and watch the status fall
+back to 200 — the §4.5 footgun.</p>
+</div>
+<hr />
+<h2 id="48-checkpoint">4.8 Checkpoint</h2>
+<ol>
+<li>When is a <code>Context</code> created, and what is its lifetime?</li>
+<li>Walk through what <code>c.json({a:1})</code> does, step by step, to produce a <code>Response</code>.</li>
+<li>Why can you call <code>c.header(...)</code> both before and after <code>c.json(...)</code>? What does <code>c.finalized</code> have to do
+   with it?</li>
+<li>What is the difference between <code>c.env</code> and <code>c.var</code>, and which one is the key to runtime portability?</li>
+<li>Show the order-of-operations footgun with <code>c.status()</code> and explain why it happens.</li>
+</ol>
+<div class="callout note">
+<p>If #2–#3 are shaky, re-read §4.4–§4.5. If #4 is shaky, re-read §4.6.</p>
+</div>
+<hr />
+<h2 class="connect" id="connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</h2>
+<p><code>c.env</code> is the cleanest answer to a problem you'll hit head-on migrating temlet. In Next.js you reach for
+<code>process.env</code> and assume a Node process exists. The moment temlet runs on the edge — or behind Tauri,
+where "the environment" is the OS and a bundled config, not a Node process — <code>process.env</code> is the wrong
+abstraction. Hono's <code>c.env</code> inverts it: your handler <em>declares a dependency</em> (<code>c.env.DATABASE</code>) and the
+adapter <em>supplies it</em>, per runtime. That's dependency injection at the request boundary.</p>
+<p>And <code>c.set</code>/<code>c.get</code> is the request-scoped equivalent of the React context you already think in: a
+middleware "provides" a value (<code>c.set('user', …)</code>), descendants "consume" it (<code>c.get('user')</code>), and it's
+torn down when the request ends. If you've ever lifted auth state through a Next middleware into a route,
+this is the same pattern with an explicit, typed channel — and one that survives the move off Node.</p>
+<p><strong>Next:</strong> <a href="05-the-middleware-onion.html">Chapter 5 — The Middleware Onion →</a></p>
+    <nav class="pager"><a class="prev" href="03-the-router.html"><span class="lbl">← Previous</span><span class="ttl">The Router</span></a><a class="next" href="05-the-middleware-onion.html"><span class="lbl">Next →</span><span class="ttl">The Middleware Onion</span></a></nav>
+  </article></main>
+  <aside class="toc"><nav><h4>On this page</h4>
+<a class="lvl-2" href="#41-why-it-matters">4.1 Why it matters</a>
+<a class="lvl-2" href="#42-mental-model-c-is-a-per-request-envelope">4.2 Mental model: c is a per-request envelope</a>
+<a class="lvl-2" href="#43-the-two-halves-reading-and-responding">4.3 The two halves: reading and responding</a>
+<a class="lvl-2" href="#44-how-cjson-becomes-a-response">4.4 How c.json() becomes a Response</a>
+<a class="lvl-2" href="#45-headers-and-status-buffered-then-committed">4.5 Headers and status: buffered, then committed</a>
+<a class="lvl-2" href="#46-cenv-and-cvar-the-portability-and-state-seams">4.6 c.env and c.var: the portability and state seams</a>
+<a class="lvl-2" href="#47-lab-4-the-middleware-handler-handoff">4.7 Lab 4 — the middleware → handler handoff</a>
+<a class="lvl-2" href="#48-checkpoint">4.8 Checkpoint</a>
+<a class="lvl-2" href="#connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</a>
+</nav></aside>
+</div>
+<footer class="site-foot">
+  <a class="foot-brand" href="https://rumitx.com" target="_blank" rel="noopener"><span class="foot-x">X</span> RumitX</a>
+  Hono Internals Handbook · grounded in <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
+  @ <code>v4.12.25</code><br>
+  A <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> publication · Edge AI, human-centric design
+</footer>
+<script src="assets/app.js"></script>
+</body>
+</html>

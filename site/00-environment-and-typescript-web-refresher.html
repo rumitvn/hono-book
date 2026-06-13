@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chapter 0 — Environment &amp;amp; TypeScript / Web-standards Refresher · Hono Internals Handbook · RumitX</title>
+<meta name="description" content="A from-the-source handbook on Hono internals — the router (RegExpRouter & TrieRouter), the Context object, the compose middleware onion, runtime adapters, and the type-safe routing & RPC client.">
+<link rel="icon" type="image/svg+xml" href="assets/brand/logo_x.svg">
+<meta name="author" content="RumitX">
+<meta name="theme-color" content="#0B1E2D">
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/code.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<header class="header">
+  <button class="icon-btn" id="menu-btn" aria-label="Open navigation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+  <a class="brand" href="index.html"><span class="mark"><span>X</span></span> Hono Internals Handbook</a>
+  <span class="spacer"></span>
+  <span class="meta-pill">pinned&nbsp;v4.12.25</span>
+  <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+</header>
+<div class="backdrop"></div>
+<div class="shell">
+  <aside class="rail"><nav>
+<a class="brand-mini" href="index.html"><img src="assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
+<h4>Chapters</h4>
+<a class="active" href="00-environment-and-typescript-web-refresher.html"><span class="num">00</span><span>Environment &amp; TypeScript / Web-standards Refresher</span></a>
+<a class="" href="01-mental-model-and-repo-map.html"><span class="num">01</span><span>Mental Model &amp; Repo Map</span></a>
+<a class="" href="02-app-lifecycle-and-request.html"><span class="num">02</span><span>The App Object &amp; HonoRequest</span></a>
+<a class="" href="03-the-router.html"><span class="num">03</span><span>The Router</span><span class="flag">★</span></a>
+<a class="" href="04-context-and-responses.html"><span class="num">04</span><span>Context &amp; Building Responses</span></a>
+<a class="" href="05-the-middleware-onion.html"><span class="num">05</span><span>The Middleware Onion</span></a>
+<a class="" href="06-runtime-adapters-and-portability.html"><span class="num">06</span><span>Runtime Adapters &amp; Portability</span></a>
+<a class="" href="07-typed-routes-rpc-and-validation.html"><span class="num">07</span><span>Typed Routes, the RPC Client &amp; Validation</span></a>
+<a class="" href="08-capstone-extending-and-staying-current.html"><span class="num">08</span><span>Capstone: Extending &amp; Staying Current</span></a>
+<h4>Reference</h4>
+<a class="" href="glossary.html"><span class="num">§</span><span>Glossary &amp; Index</span></a>
+<a href="https://github.com/rumitvn/hono-book" target="_blank" rel="noopener"><span class="num">↗</span><span>GitHub repo</span></a>
+</nav></aside>
+  <main class="content"><article class="article">
+    <div class="crumbs"><a href="index.html">Handbook</a> / Chapter 00</div>
+    <h1 id="chapter-0-environment-typescript-web-standards-refresher">Chapter 0 — Environment &amp; TypeScript / Web-standards Refresher</h1>
+<div class="callout goal">
+<p><strong>Goal:</strong> Get a green build of <code>honojs/hono</code> at the pinned ref <strong><code>v4.12.25</code></strong> (commit <code>fce483e</code>), and
+refresh the two pillars the whole framework rests on — the <strong>Fetch API</strong> (<code>Request</code>/<code>Response</code>) and the
+<strong>TypeScript generics &amp; conditional types</strong> that make routes type-safe. By the end you can run a tiny
+Hono app and the upstream test suite locally.</p>
+</div>
+<hr />
+<h2 id="01-why-it-matters">0.1 Why it matters</h2>
+<p>Most frameworks invent their own request and response objects. Express has <code>req</code>/<code>res</code>. Next.js has
+<code>NextRequest</code>/<code>NextResponse</code>. Each one is a different shape, and porting code between them means rewriting
+the boundary. Hono made the opposite bet: it uses the <strong>web platform's own <code>Request</code> and <code>Response</code></strong> —
+the same objects your browser's <code>fetch()</code> returns, the same objects a Cloudflare Worker's <code>fetch</code> handler
+receives. Nothing proprietary at the edges.</p>
+<p>That single decision is why one <code>app</code> can run on Cloudflare Workers, Bun, Deno, Node, and Lambda without
+changing a line. So before we read a single line of routing code, we need the two things Hono assumes you
+already know: <strong>what <code>Request</code>/<code>Response</code> are</strong>, and <strong>how TypeScript's type-level features let a string
+path become a typed parameter</strong>. If those are fresh, the rest of the book reads easily.</p>
+<hr />
+<h2 id="02-mental-model-a-framework-that-is-just-a-fetch-handler">0.2 Mental model: a framework that is "just" a fetch handler</h2>
+<p>Strip everything away and a Hono app is one function with this shape:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>        ┌─────────────────────────────────────────────┐
+        │   (request: Request) =&gt; Response | Promise   │
+        │                                              │
+  HTTP  │   app.fetch  ───►  router  ───►  handler     │  HTTP
+  ─────►│        │             │             │         │─────►
+ Request│        └── Context (c) ──── c.json/text/html │ Response
+        └─────────────────────────────────────────────┘
+</code></pre></div></figure>
+
+<p>The runtime (Workers, Bun, …) hands Hono a <code>Request</code> and expects a <code>Response</code> back. Everything Hono
+does — match a route, run middleware, build a body — happens <em>between</em> those two web-standard objects.
+This is exactly the shape a Cloudflare Worker already has:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">fetch</span><span class="p">(</span><span class="nx">request</span><span class="o">:</span><span class="w"> </span><span class="kt">Request</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">Response</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="nx">Response</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Response</span><span class="p">(</span><span class="s1">&#39;hi&#39;</span><span class="p">)</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="p">}</span>
+</code></pre></div></figure>
+
+<p>A Hono <code>app</code> <em>is</em> that <code>fetch</code> function, with a router and middleware bolted on. Hold this picture.</p>
+<hr />
+<h2 id="03-refresher-the-fetch-api-objects">0.3 Refresher: the Fetch API objects</h2>
+<p>These are global in every modern runtime. No import needed.</p>
+<p><strong><code>Request</code></strong> — an immutable view of an incoming HTTP request:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">req</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Request</span><span class="p">(</span><span class="s1">&#39;https://x.dev/users/42?q=hi&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;GET&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">headers</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s1">&#39;content-type&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;application/json&#39;</span><span class="w"> </span><span class="p">},</span>
+<span class="p">})</span>
+<span class="nx">req</span><span class="p">.</span><span class="nx">method</span><span class="w">            </span><span class="c1">// &#39;GET&#39;</span>
+<span class="nx">req</span><span class="p">.</span><span class="nx">url</span><span class="w">               </span><span class="c1">// &#39;https://x.dev/users/42?q=hi&#39;</span>
+<span class="nx">req</span><span class="p">.</span><span class="nx">headers</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">&#39;content-type&#39;</span><span class="p">)</span><span class="w">   </span><span class="c1">// &#39;application/json&#39;</span>
+<span class="k">await</span><span class="w"> </span><span class="nx">req</span><span class="p">.</span><span class="nx">json</span><span class="p">()</span><span class="w">      </span><span class="c1">// parses the body once (the body is a stream)</span>
+</code></pre></div></figure>
+
+<div class="callout warn"><span class="ic">⚠️</span>
+<p> A request/response <strong>body is a one-shot stream</strong>. You can read it <em>once</em>. This is why Hono caches the
+parsed body — you'll see <code>bodyCache</code> in <code>src/request.ts:69</code> in the next chapter. Re-reading a consumed
+body throws.</p>
+</div>
+<p><strong><code>Response</code></strong> — what you send back:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="ow">new</span><span class="w"> </span><span class="nx">Response</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">status</span><span class="o">:</span><span class="w"> </span><span class="kt">200</span><span class="p">,</span><span class="w"> </span><span class="nx">headers</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s1">&#39;x-foo&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;bar&#39;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span>
+<span class="nx">Response</span><span class="p">.</span><span class="nx">json</span><span class="p">({</span><span class="w"> </span><span class="nx">ok</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="w"> </span><span class="p">})</span><span class="w">          </span><span class="c1">// sets content-type for you</span>
+<span class="ow">new</span><span class="w"> </span><span class="nx">Response</span><span class="p">(</span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">status</span><span class="o">:</span><span class="w"> </span><span class="kt">302</span><span class="p">,</span><span class="w"> </span><span class="nx">headers</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">location</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;/&#39;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span><span class="w">  </span><span class="c1">// redirect</span>
+</code></pre></div></figure>
+
+<p>Hono's <code>c.text()</code>, <code>c.json()</code>, and <code>c.redirect()</code> are thin, ergonomic wrappers that ultimately construct
+one of these. Keep that in mind — when we read <code>context.ts</code>, you'll see there is no magic, just <code>Response</code>
+construction with sensible defaults.</p>
+<hr />
+<h2 id="04-refresher-the-typescript-features-hono-leans-on">0.4 Refresher: the TypeScript features Hono leans on</h2>
+<p>Hono's headline feature is <em>type-safe routing</em>: write <code>/users/:id</code> and <code>c.req.param('id')</code> is typed as a
+string with no annotation. That is built entirely from three TypeScript features. You don't need to master
+them, but you should recognize them when Chapter 7 cites <code>src/types.ts</code>.</p>
+<p><strong>1. Generics carry type information through a call.</strong></p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="kd">function</span><span class="w"> </span><span class="nx">first</span><span class="o">&lt;</span><span class="nx">T</span><span class="o">&gt;</span><span class="p">(</span><span class="nx">arr</span><span class="o">:</span><span class="w"> </span><span class="kt">T</span><span class="p">[])</span><span class="o">:</span><span class="w"> </span><span class="nx">T</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">arr</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="w"> </span><span class="p">}</span>
+<span class="nx">first</span><span class="p">([</span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="mf">2</span><span class="p">,</span><span class="w"> </span><span class="mf">3</span><span class="p">])</span><span class="w">         </span><span class="c1">// T inferred as number → returns number</span>
+</code></pre></div></figure>
+
+<p>The <code>Hono</code> class is generic: <code>class Hono&lt;E extends Env, S extends Schema, BasePath extends string&gt;</code>
+(<code>src/hono.ts:16</code>). The <code>S</code> type parameter is the <em>accumulated route schema</em> — every <code>.get()</code> call returns
+a new <code>Hono</code> with <code>S</code> widened to include that route. That's how the <code>hc</code> client later knows your routes.</p>
+<p><strong>2. Template-literal types let the compiler read a string.</strong></p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="kr">type</span><span class="w"> </span><span class="nx">Greeting</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`hello </span><span class="si">${</span><span class="kt">string</span><span class="si">}</span><span class="sb">`</span><span class="w">     </span><span class="c1">// matches &quot;hello world&quot;, not &quot;hi&quot;</span>
+</code></pre></div></figure>
+
+<p>Hono uses these to parse a path <em>at the type level</em>. <code>ParamKeys&lt;'/users/:id'&gt;</code> evaluates to <code>'id'</code>
+(<code>src/types.ts:2706</code>). The compiler literally splits the path string on <code>/</code> and extracts the <code>:</code>-prefixed
+segments.</p>
+<p><strong>3. Conditional types branch on a type.</strong></p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="kr">type</span><span class="w"> </span><span class="nx">IsString</span><span class="o">&lt;</span><span class="nx">T</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">T</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s1">&#39;yes&#39;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;no&#39;</span>
+</code></pre></div></figure>
+
+<p><code>ParamKey</code> (<code>src/types.ts</code> near 2698) uses exactly this pattern — <code>Component extends</code>:${infer Name}<code>?
+Name : never</code> — to pull the name out of a <code>:param</code> segment. The <code>infer</code> keyword captures the matched piece.</p>
+<div class="callout note"><span class="ic">🧠</span>
+<p> <strong>Mental model:</strong> Hono's type safety is a tiny compile-time interpreter that runs over your path
+strings. It costs zero bytes at runtime — it's all erased. We'll read the real definitions in Chapter 7;
+for now, just know these three features are the whole toolkit.</p>
+</div>
+<hr />
+<h2 id="05-the-public-surface">0.5 The public surface</h2>
+<p>Open <code>src/index.ts</code> (53 lines). This is everything <code>import … from 'hono'</code> gives you:</p>
+<ul>
+<li><code>src/index.ts:17</code> — <code>import { Hono } from './hono'</code>, re-exported at <code>:53</code>. The class is the whole runtime API.</li>
+<li><code>src/index.ts:22-34</code> — the public <strong>types</strong>: <code>Env</code>, <code>Handler</code>, <code>MiddlewareHandler</code>, <code>Next</code>, <code>Input</code>,
+  <code>Schema</code>, <code>ToSchema</code>, <code>TypedResponse</code>. These are the type-level vocabulary of the framework.</li>
+<li><code>src/index.ts:39</code> — <code>export { Context } from './context'</code> — the <code>c</code> object's class.</li>
+<li><code>src/index.ts:44</code> — <code>HonoRequest</code> (type only).</li>
+</ul>
+<div class="callout info"><span class="ic">📁</span>
+<p> Note how small this is. Middleware (<code>hono/cors</code>), adapters (<code>hono/cloudflare-workers</code>), the client
+(<code>hono/client</code>), and JSX (<code>hono/jsx</code>) are <strong>separate entry points</strong>, not bundled into the core. That
+keeps the base import tiny — a deliberate edge-size optimization we'll revisit in Chapter 6.</p>
+</div>
+<hr />
+<h2 id="06-lab-0-green-build-first-app">0.6 Lab 0 — green build + first app</h2>
+<p>The upstream repo uses <strong>Bun</strong> as its primary toolchain (see <code>.tool-versions</code>: <code>bun 1.2.19</code>, <code>nodejs
+24.7.0</code>, <code>deno 2.4.5</code>). Install Bun if you don't have it (<code>curl -fsSL https://bun.sh/install | bash</code>), then:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">bash</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1"># 1. Confirm the pin (read-only clone lives beside the book)</span>
+<span class="nb">cd</span><span class="w"> </span>../hono
+git<span class="w"> </span>log<span class="w"> </span>-1<span class="w"> </span>--format<span class="o">=</span><span class="s1">&#39;%h %d&#39;</span><span class="w">        </span><span class="c1"># expect: fce483e (tag: v4.12.25)</span>
+
+<span class="c1"># 2. Install dev deps and type-check + run the suite</span>
+bun<span class="w"> </span>install
+bun<span class="w"> </span>run<span class="w"> </span><span class="nb">test</span><span class="w">                        </span><span class="c1"># = tsc --noEmit &amp;&amp; vitest --run</span>
+</code></pre></div></figure>
+
+<p>Then build the smallest possible app <em>outside</em> the clone (so you never mutate it) — this is the
+<code>hono-hello</code> artifact you'll reuse in later labs:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">bash</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>~/hono-hello<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>~/hono-hello
+bun<span class="w"> </span>init<span class="w"> </span>-y
+bun<span class="w"> </span>add<span class="w"> </span>hono
+</code></pre></div></figure>
+
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// index.ts</span>
+<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Hono</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono&#39;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Hono</span><span class="p">()</span>
+<span class="nx">app</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">text</span><span class="p">(</span><span class="s1">&#39;Hono!&#39;</span><span class="p">))</span>
+<span class="nx">app</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">&#39;/users/:id&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">({</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="kt">c.req.param</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">}))</span>
+
+<span class="k">export</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="nx">app</span>
+</code></pre></div></figure>
+
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">bash</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>bun<span class="w"> </span>run<span class="w"> </span>--hot<span class="w"> </span>index.ts
+<span class="c1"># in another shell:</span>
+curl<span class="w"> </span>localhost:3000/
+curl<span class="w"> </span>localhost:3000/users/42
+</code></pre></div></figure>
+
+<div class="callout lab"><span class="ic">🧪</span>
+<p> <strong>Save your numbers</strong> in <code>labs/lab0-setup.md</code>: your Bun version, whether <code>bun run test</code> is green, and
+the two <code>curl</code> outputs. You should see <code>Hono!</code> and <code>{"id":"42"}</code>. Note that <code>:id</code> arrived as a <strong>string</strong> —
+that's the typed param from §0.4 in action.</p>
+<p>💡 <strong>Tip:</strong> <code>vitest --run</code> is fast because Hono is pure TypeScript with no native build step. Compare
+that to the C/C++/Rust books in this series, where "get a green build" meant a compiler toolchain. Here
+the whole framework is source you can read top to bottom in an afternoon.</p>
+</div>
+<hr />
+<h2 id="07-checkpoint">0.7 Checkpoint</h2>
+<ol>
+<li>What two web-standard objects sit at Hono's input and output boundary, and why does using them make the
+   framework portable?</li>
+<li>Why must Hono cache a parsed request body instead of re-reading it?</li>
+<li>What does <code>ParamKeys&lt;'/posts/:slug'&gt;</code> evaluate to, and which TypeScript feature makes that possible?</li>
+<li>Is <code>hono/cors</code> part of the core <code>hono</code> import? Where do middleware and adapters live?</li>
+<li>When you hit <code>/users/42</code>, what is the runtime <em>type</em> of <code>c.req.param('id')</code>, and where did that type come from?</li>
+</ol>
+<div class="callout note">
+<p>If #3 or #5 is shaky, re-read §0.4. If #1–#2 are shaky, re-read §0.3.</p>
+</div>
+<hr />
+<h2 class="connect" id="connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</h2>
+<p>You've lived the pain this chapter's "one bet" avoids. In <strong>temlet</strong> on Next.js, your API logic is married
+to <code>NextRequest</code>/<code>NextResponse</code> and the Node/Edge runtime split. The moment you carry temlet toward
+<strong>Tauri</strong>, that Node server isn't there anymore — and anything bound to Next's request objects has to be
+rewritten for the native side.</p>
+<p>Hono's bet is the escape hatch: because it speaks only <code>Request</code>/<code>Response</code>, the <em>same</em> router and handlers
+run inside a Worker, a Bun server, or a sidecar process behind a Tauri shell. As you read this book, keep
+asking: <em>which of my temlet API handlers could become runtime-agnostic Hono handlers?</em> The web→native
+migration gets dramatically cheaper when your HTTP layer stops caring what's underneath it.</p>
+<p><strong>Next:</strong> <a href="01-mental-model-and-repo-map.html">Chapter 1 — Mental Model &amp; Repo Map →</a></p>
+    <nav class="pager"><a class="prev" href="index.html"><span class="lbl">← Previous</span><span class="ttl">Home</span></a><a class="next" href="01-mental-model-and-repo-map.html"><span class="lbl">Next →</span><span class="ttl">Mental Model &amp; Repo Map</span></a></nav>
+  </article></main>
+  <aside class="toc"><nav><h4>On this page</h4>
+<a class="lvl-2" href="#01-why-it-matters">0.1 Why it matters</a>
+<a class="lvl-2" href="#02-mental-model-a-framework-that-is-just-a-fetch-handler">0.2 Mental model: a framework that is &quot;just&quot; a fetch handler</a>
+<a class="lvl-2" href="#03-refresher-the-fetch-api-objects">0.3 Refresher: the Fetch API objects</a>
+<a class="lvl-2" href="#04-refresher-the-typescript-features-hono-leans-on">0.4 Refresher: the TypeScript features Hono leans on</a>
+<a class="lvl-2" href="#05-the-public-surface">0.5 The public surface</a>
+<a class="lvl-2" href="#06-lab-0-green-build-first-app">0.6 Lab 0 — green build + first app</a>
+<a class="lvl-2" href="#07-checkpoint">0.7 Checkpoint</a>
+<a class="lvl-2" href="#connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</a>
+</nav></aside>
+</div>
+<footer class="site-foot">
+  <a class="foot-brand" href="https://rumitx.com" target="_blank" rel="noopener"><span class="foot-x">X</span> RumitX</a>
+  Hono Internals Handbook · grounded in <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
+  @ <code>v4.12.25</code><br>
+  A <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> publication · Edge AI, human-centric design
+</footer>
+<script src="assets/app.js"></script>
+</body>
+</html>

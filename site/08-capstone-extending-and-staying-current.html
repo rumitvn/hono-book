@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chapter 8 — Capstone: Extending &amp;amp; Staying Current · Hono Internals Handbook · RumitX</title>
+<meta name="description" content="A from-the-source handbook on Hono internals — the router (RegExpRouter & TrieRouter), the Context object, the compose middleware onion, runtime adapters, and the type-safe routing & RPC client.">
+<link rel="icon" type="image/svg+xml" href="assets/brand/logo_x.svg">
+<meta name="author" content="RumitX">
+<meta name="theme-color" content="#0B1E2D">
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/code.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<header class="header">
+  <button class="icon-btn" id="menu-btn" aria-label="Open navigation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+  <a class="brand" href="index.html"><span class="mark"><span>X</span></span> Hono Internals Handbook</a>
+  <span class="spacer"></span>
+  <span class="meta-pill">pinned&nbsp;v4.12.25</span>
+  <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+</header>
+<div class="backdrop"></div>
+<div class="shell">
+  <aside class="rail"><nav>
+<a class="brand-mini" href="index.html"><img src="assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
+<h4>Chapters</h4>
+<a class="" href="00-environment-and-typescript-web-refresher.html"><span class="num">00</span><span>Environment &amp; TypeScript / Web-standards Refresher</span></a>
+<a class="" href="01-mental-model-and-repo-map.html"><span class="num">01</span><span>Mental Model &amp; Repo Map</span></a>
+<a class="" href="02-app-lifecycle-and-request.html"><span class="num">02</span><span>The App Object &amp; HonoRequest</span></a>
+<a class="" href="03-the-router.html"><span class="num">03</span><span>The Router</span><span class="flag">★</span></a>
+<a class="" href="04-context-and-responses.html"><span class="num">04</span><span>Context &amp; Building Responses</span></a>
+<a class="" href="05-the-middleware-onion.html"><span class="num">05</span><span>The Middleware Onion</span></a>
+<a class="" href="06-runtime-adapters-and-portability.html"><span class="num">06</span><span>Runtime Adapters &amp; Portability</span></a>
+<a class="" href="07-typed-routes-rpc-and-validation.html"><span class="num">07</span><span>Typed Routes, the RPC Client &amp; Validation</span></a>
+<a class="active" href="08-capstone-extending-and-staying-current.html"><span class="num">08</span><span>Capstone: Extending &amp; Staying Current</span></a>
+<h4>Reference</h4>
+<a class="" href="glossary.html"><span class="num">§</span><span>Glossary &amp; Index</span></a>
+<a href="https://github.com/rumitvn/hono-book" target="_blank" rel="noopener"><span class="num">↗</span><span>GitHub repo</span></a>
+</nav></aside>
+  <main class="content"><article class="article">
+    <div class="crumbs"><a href="index.html">Handbook</a> / Chapter 08</div>
+    <h1 id="chapter-8-capstone-extending-staying-current">Chapter 8 — Capstone: Extending &amp; Staying Current</h1>
+<div class="callout goal">
+<p><strong>Goal:</strong> Put it all together. Write a custom middleware and your own router preset, read a real merged
+Hono PR unaided, and learn the workflow to re-sync this book when you bump the pin. Grounded in
+<code>honojs/hono</code> at <strong><code>v4.12.25</code></strong> (<code>fce483e</code>).</p>
+</div>
+<hr />
+<h2 id="81-why-it-matters">8.1 Why it matters</h2>
+<p>You've read the five layers from the inside. The test of understanding is <em>building</em> on them and <em>reading</em>
+new changes to them without a guide. This chapter is that test — and it doubles as the maintenance manual
+for the book itself, since Hono moves fast and your pin will eventually drift.</p>
+<hr />
+<h2 id="82-capstone-part-1-a-custom-middleware">8.2 Capstone part 1 — a custom middleware</h2>
+<p>You already know everything you need: middleware is a <code>(c, next)</code> function (Chapter 5), <code>c.res</code> is the
+committed response (Chapter 4), and built-ins live in <code>src/middleware/</code>. Read the <em>simplest</em> built-in,
+<code>poweredBy</code> (<code>src/middleware/powered-by/index.ts:30</code>), as your template:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">poweredBy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">options</span><span class="o">?</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">poweredBy</span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">next</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">await</span><span class="w"> </span><span class="nx">next</span><span class="p">()</span><span class="w">                                              </span><span class="c1">// descend the onion first</span>
+<span class="w">    </span><span class="nx">c</span><span class="p">.</span><span class="nx">res</span><span class="p">.</span><span class="nx">headers</span><span class="p">.</span><span class="nx">set</span><span class="p">(</span><span class="s1">&#39;X-Powered-By&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">options</span><span class="o">?</span><span class="p">.</span><span class="nx">serverName</span><span class="w"> </span><span class="o">??</span><span class="w"> </span><span class="s1">&#39;Hono&#39;</span><span class="p">)</span><span class="w">  </span><span class="c1">// then tweak the response</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></figure>
+
+<p>Notice the shape: a factory that returns a <code>MiddlewareHandler</code> (<code>src/types.ts:83</code>), and it does its work
+<strong>after <code>await next()</code></strong> — the "on the way out" phase from §5.2. Now write your own: a server-timing
+middleware that measures handler duration and sets a header.</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// timing-mw.ts</span>
+<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Hono</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono&#39;</span>
+<span class="k">import</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">MiddlewareHandler</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono&#39;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">serverTiming</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="nx">MiddlewareHandler</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">next</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">start</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">performance</span><span class="p">.</span><span class="nx">now</span><span class="p">()</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">next</span><span class="p">()</span><span class="w">                                  </span><span class="c1">// run the rest of the onion</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">ms</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">performance</span><span class="p">.</span><span class="nx">now</span><span class="p">()</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nx">start</span><span class="p">).</span><span class="nx">toFixed</span><span class="p">(</span><span class="mf">1</span><span class="p">)</span>
+<span class="w">  </span><span class="nx">c</span><span class="p">.</span><span class="nx">res</span><span class="p">.</span><span class="nx">headers</span><span class="p">.</span><span class="nx">set</span><span class="p">(</span><span class="s1">&#39;Server-Timing&#39;</span><span class="p">,</span><span class="w"> </span><span class="sb">`app;dur=</span><span class="si">${</span><span class="nx">ms</span><span class="si">}</span><span class="sb">`</span><span class="p">)</span><span class="w">   </span><span class="c1">// post-next: mutate committed response (§4.5)</span>
+<span class="p">}</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Hono</span><span class="p">()</span>
+<span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="nx">serverTiming</span><span class="p">())</span>
+<span class="nx">app</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">,</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nb">Promise</span><span class="p">((</span><span class="nx">r</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">setTimeout</span><span class="p">(</span><span class="nx">r</span><span class="p">,</span><span class="w"> </span><span class="mf">20</span><span class="p">));</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">text</span><span class="p">(</span><span class="s1">&#39;ok&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">})</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">res</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">app</span><span class="p">.</span><span class="nx">request</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">)</span>
+<span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">res</span><span class="p">.</span><span class="nx">headers</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">&#39;Server-Timing&#39;</span><span class="p">))</span><span class="w">   </span><span class="c1">// expect app;dur=~20</span>
+<span class="k">export</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="nx">app</span>
+</code></pre></div></figure>
+
+<p>Every design choice here traces to an earlier chapter: it's a layer in the onion (Ch 5), it sets a header
+after the response is finalized (Ch 4), and it works on any runtime because it touches only <code>Response</code>
+(Ch 6). That's the whole framework, used.</p>
+<hr />
+<h2 id="83-capstone-part-2-your-own-preset">8.3 Capstone part 2 — your own preset</h2>
+<p>A preset is just a <code>Hono</code> subclass that picks a router (§3.7). Read <code>src/preset/tiny.ts:11</code> — it's ~20
+lines. Build one that forces <code>RegExpRouter</code> alone (no fallback) so you get an immediate
+<code>UnsupportedPathError</code> on ambiguous routes — useful as a lint in CI to catch routes that would silently
+fall back to the slower TrieRouter:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// strict-preset.ts</span>
+<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">HonoBase</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono/hono-base&#39;</span><span class="w">          </span><span class="c1">// the engine (§2.2)</span>
+<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">RegExpRouter</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono/router/reg-exp-router&#39;</span>
+
+<span class="k">export</span><span class="w"> </span><span class="kd">class</span><span class="w"> </span><span class="nx">StrictHono</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="nx">HonoBase</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kr">constructor</span><span class="p">(</span><span class="nx">options</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{})</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">super</span><span class="p">(</span><span class="nx">options</span><span class="p">)</span>
+<span class="w">    </span><span class="k">this</span><span class="p">.</span><span class="nx">router</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">RegExpRouter</span><span class="p">()</span><span class="w">   </span><span class="c1">// no SmartRouter, no TrieRouter fallback</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></figure>
+
+<p>Now any route table that can't be expressed as one regex throws at first match instead of quietly
+degrading — exactly the §3.5 refusal, surfaced as a guardrail. You've turned an internal error signal into
+a design constraint you can enforce.</p>
+<div class="callout tip"><span class="ic">💡</span>
+<p> <strong>Tip:</strong> this is the same mechanism the official <code>tiny</code>/<code>quick</code> presets use. Reading <code>src/preset/</code>
+proved that "swap the router" is a supported extension point, not a hack.</p>
+</div>
+<hr />
+<h2 id="84-read-a-real-pr-unaided">8.4 Read a real PR unaided</h2>
+<p>Time to read upstream changes the way a maintainer does. Open a recent merged PR — for example
+<strong>#5013, "fix(lambda-edge): satisfy Deno lib types for Content-Length body encoding"</strong> (merged 2026-06-09):</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">bash</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>gh<span class="w"> </span>pr<span class="w"> </span>view<span class="w"> </span><span class="m">5013</span><span class="w"> </span>--repo<span class="w"> </span>honojs/hono
+gh<span class="w"> </span>pr<span class="w"> </span>diff<span class="w"> </span><span class="m">5013</span><span class="w"> </span>--repo<span class="w"> </span>honojs/hono
+</code></pre></div></figure>
+
+<p>As you read, locate it in your mental model:</p>
+<ol>
+<li><strong>Which layer?</strong> The path <code>src/adapter/lambda-edge/</code> tells you instantly: this is the <strong>Adapter</strong> layer
+   (Chapter 6), not the core. A core router/compose change would touch <code>src/router/</code> or <code>src/compose.ts</code>.</li>
+<li><strong>What contract does it preserve?</strong> Adapters translate a runtime's native shape to/from
+   <code>Request</code>/<code>Response</code>. A <code>Content-Length</code>/body-encoding fix is the adapter getting the <code>Response</code>
+   translation right for one runtime — the core is untouched, which is the whole point of §6.2.</li>
+<li><strong>Where are the tests?</strong> Hono changes ship with tests; the <code>*.test.ts</code> beside the file is where the
+   behavior is pinned.</li>
+</ol>
+<div class="callout lab"><span class="ic">🧪</span>
+<p> <strong>Record in <code>labs/lab8-pr.md</code>:</strong> pick any recently merged PR, and in 3–4 sentences state which of the
+five layers it touches and which contract it preserves or changes. If you can place it without help, you
+understand the architecture. (Try one core PR and one adapter PR for contrast.)</p>
+</div>
+<hr />
+<h2 id="85-staying-current-re-syncing-the-book">8.5 Staying current — re-syncing the book</h2>
+<p>Hono releases often. When you bump the pin, citations drift. The workflow:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">bash</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1"># 1. Find the new latest tag and re-pin the clone</span>
+gh<span class="w"> </span>api<span class="w"> </span>repos/honojs/hono/tags<span class="w"> </span>--jq<span class="w"> </span><span class="s1">&#39;.[0].name&#39;</span>
+<span class="nb">cd</span><span class="w"> </span>../hono<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>fetch<span class="w"> </span>--tags<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>git<span class="w"> </span>checkout<span class="w"> </span>&lt;new-tag&gt;
+git<span class="w"> </span>log<span class="w"> </span>-1<span class="w"> </span>--format<span class="o">=</span><span class="s1">&#39;%h&#39;</span><span class="w">        </span><span class="c1"># record the new short SHA</span>
+
+<span class="c1"># 2. Update the book&#39;s pin in ONE place</span>
+<span class="c1">#    site_src/build_site.py → PINNED = &quot;&lt;new-tag&gt;&quot;   (and the SHA comment)</span>
+
+<span class="c1"># 3. Re-verify the citations that matter most (they&#39;re listed in reference/glossary.md &quot;Key files&quot;)</span>
+sed<span class="w"> </span>-n<span class="w"> </span><span class="s1">&#39;419p&#39;</span><span class="w"> </span>src/hono-base.ts<span class="w">        </span><span class="c1"># should still be router.match(...)</span>
+sed<span class="w"> </span>-n<span class="w"> </span><span class="s1">&#39;10p&#39;</span><span class="w">  </span>src/router/reg-exp-router/matcher.ts<span class="w">   </span><span class="c1"># should still be the match() entry</span>
+<span class="c1"># …spot-check the Key-files table; fix any line numbers that moved</span>
+
+<span class="c1"># 4. Rebuild and screenshot</span>
+<span class="nb">cd</span><span class="w"> </span>../hono-book<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>python3<span class="w"> </span>site_src/build_site.py
+</code></pre></div></figure>
+
+<div class="callout warn"><span class="ic">⚠️</span>
+<p> The single most fragile thing across a version bump is <strong>line numbers</strong>, not concepts. The <em>shape</em> of
+Hono (five layers, four routers, the onion) is stable release to release; the line a symbol sits on is
+not. The glossary's "Key files" table is your re-verification checklist — work through it after every
+re-pin.</p>
+</div>
+<hr />
+<h2 id="86-final-checkpoint-the-whole-book">8.6 Final checkpoint — the whole book</h2>
+<ol>
+<li>Trace a request from <code>app.fetch()</code> to a <code>Response</code>, naming the file for each of the five layers.</li>
+<li>Explain the RegExpRouter trick and when SmartRouter falls back — the single most important idea in Hono.</li>
+<li>Give the console order for a two-middleware onion, and say where an error would be caught.</li>
+<li>Explain how the same app runs on Workers and Bun without code changes (<code>env()</code> + adapters).</li>
+<li>Explain how <code>/users/:id</code> becomes a typed <code>hc</code> client call with no codegen.</li>
+<li>Write a middleware that runs logic <em>before</em> and <em>after</em> the handler, and say why it's portable.</li>
+</ol>
+<div class="callout note">
+<p>If any of these is shaky, the chapter to re-read is named in the question. This is the book in six
+sentences — if you can answer all six, you understand <code>honojs/hono</code>.</p>
+</div>
+<hr />
+<h2 class="connect" id="connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</h2>
+<p>You started this book carrying temlet from Next.js toward Tauri, with a server layer married to Node. You
+end it with a different option on the table: an HTTP layer that is <em>runtime-agnostic by construction</em> — one
+that runs on the edge today, behind a native shell tomorrow, with typed clients on both sides and
+cross-cutting logic expressed as composable onion layers.</p>
+<p>The deeper takeaway isn't "use Hono." It's the <em>discipline</em> Hono demonstrates: build on the platform's own
+contracts (<code>Request</code>/<code>Response</code>), push everything runtime-specific to a thin, swappable edge (the
+adapters), and let types — not codegen — carry your API across boundaries. That's the same discipline that
+makes a web→native migration tractable instead of a rewrite. Whatever you choose for temlet's backend, you
+now know what "portable by design" actually looks like in source — and you can read the next edge framework
+that comes along by the same five-layer light.</p>
+<p><strong>Done.</strong> Re-read the <a href="03-the-router.html">flagship router chapter</a> once more — it rewards a second pass — and
+keep <code>../hono</code> open. The book stays useful as a map every time you open the source.</p>
+<p><em>A RumitX publication · <a href="https://rumitx.com">rumitx.com</a></em></p>
+    <nav class="pager"><a class="prev" href="07-typed-routes-rpc-and-validation.html"><span class="lbl">← Previous</span><span class="ttl">Typed Routes, the RPC Client &amp; Validation</span></a><a class="next" href="glossary.html"><span class="lbl">Next →</span><span class="ttl">Glossary</span></a></nav>
+  </article></main>
+  <aside class="toc"><nav><h4>On this page</h4>
+<a class="lvl-2" href="#81-why-it-matters">8.1 Why it matters</a>
+<a class="lvl-2" href="#82-capstone-part-1-a-custom-middleware">8.2 Capstone part 1 — a custom middleware</a>
+<a class="lvl-2" href="#83-capstone-part-2-your-own-preset">8.3 Capstone part 2 — your own preset</a>
+<a class="lvl-2" href="#84-read-a-real-pr-unaided">8.4 Read a real PR unaided</a>
+<a class="lvl-2" href="#85-staying-current-re-syncing-the-book">8.5 Staying current — re-syncing the book</a>
+<a class="lvl-2" href="#86-final-checkpoint-the-whole-book">8.6 Final checkpoint — the whole book</a>
+<a class="lvl-2" href="#connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</a>
+</nav></aside>
+</div>
+<footer class="site-foot">
+  <a class="foot-brand" href="https://rumitx.com" target="_blank" rel="noopener"><span class="foot-x">X</span> RumitX</a>
+  Hono Internals Handbook · grounded in <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
+  @ <code>v4.12.25</code><br>
+  A <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> publication · Edge AI, human-centric design
+</footer>
+<script src="assets/app.js"></script>
+</body>
+</html>

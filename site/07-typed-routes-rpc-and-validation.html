@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chapter 7 — Typed Routes, the RPC Client &amp;amp; Validation · Hono Internals Handbook · RumitX</title>
+<meta name="description" content="A from-the-source handbook on Hono internals — the router (RegExpRouter & TrieRouter), the Context object, the compose middleware onion, runtime adapters, and the type-safe routing & RPC client.">
+<link rel="icon" type="image/svg+xml" href="assets/brand/logo_x.svg">
+<meta name="author" content="RumitX">
+<meta name="theme-color" content="#0B1E2D">
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/code.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<header class="header">
+  <button class="icon-btn" id="menu-btn" aria-label="Open navigation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+  <a class="brand" href="index.html"><span class="mark"><span>X</span></span> Hono Internals Handbook</a>
+  <span class="spacer"></span>
+  <span class="meta-pill">pinned&nbsp;v4.12.25</span>
+  <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+</header>
+<div class="backdrop"></div>
+<div class="shell">
+  <aside class="rail"><nav>
+<a class="brand-mini" href="index.html"><img src="assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
+<h4>Chapters</h4>
+<a class="" href="00-environment-and-typescript-web-refresher.html"><span class="num">00</span><span>Environment &amp; TypeScript / Web-standards Refresher</span></a>
+<a class="" href="01-mental-model-and-repo-map.html"><span class="num">01</span><span>Mental Model &amp; Repo Map</span></a>
+<a class="" href="02-app-lifecycle-and-request.html"><span class="num">02</span><span>The App Object &amp; HonoRequest</span></a>
+<a class="" href="03-the-router.html"><span class="num">03</span><span>The Router</span><span class="flag">★</span></a>
+<a class="" href="04-context-and-responses.html"><span class="num">04</span><span>Context &amp; Building Responses</span></a>
+<a class="" href="05-the-middleware-onion.html"><span class="num">05</span><span>The Middleware Onion</span></a>
+<a class="" href="06-runtime-adapters-and-portability.html"><span class="num">06</span><span>Runtime Adapters &amp; Portability</span></a>
+<a class="active" href="07-typed-routes-rpc-and-validation.html"><span class="num">07</span><span>Typed Routes, the RPC Client &amp; Validation</span></a>
+<a class="" href="08-capstone-extending-and-staying-current.html"><span class="num">08</span><span>Capstone: Extending &amp; Staying Current</span></a>
+<h4>Reference</h4>
+<a class="" href="glossary.html"><span class="num">§</span><span>Glossary &amp; Index</span></a>
+<a href="https://github.com/rumitvn/hono-book" target="_blank" rel="noopener"><span class="num">↗</span><span>GitHub repo</span></a>
+</nav></aside>
+  <main class="content"><article class="article">
+    <div class="crumbs"><a href="index.html">Handbook</a> / Chapter 07</div>
+    <h1 id="chapter-7-typed-routes-the-rpc-client-validation">Chapter 7 — Typed Routes, the RPC Client &amp; Validation</h1>
+<div class="callout goal">
+<p><strong>Goal:</strong> Read the type-level machinery that makes Hono <em>type-safe</em>: how a path string yields a typed
+<code>c.req.param()</code>, how each route accumulates into a schema, and how the <code>hc</code> RPC client and <code>validator()</code>
+middleware ride on top of it. Grounded in <code>honojs/hono</code> at <strong><code>v4.12.25</code></strong> (<code>fce483e</code>).</p>
+</div>
+<hr />
+<h2 id="71-why-it-matters">7.1 Why it matters</h2>
+<p>Hono's marquee feature isn't speed — it's that your <em>types flow from server to client with zero
+duplication</em>. Write <code>app.get('/users/:id', …)</code> and three things become typed for free: <code>c.req.param('id')</code>
+on the server, the request shape, and — via the <code>hc</code> client — the fully-typed call on the frontend. No
+codegen, no OpenAPI step, no schema file. This is the feature that makes people switch to Hono, and it is
+<em>entirely</em> a TypeScript construction with <strong>zero runtime cost</strong> (it all erases at compile time).</p>
+<p>This chapter is the one place the book reads types rather than logic. That's the point: this is where
+Hono's complexity budget went (recall §1.3 — <code>types.ts</code> is 2,778 lines of pure types).</p>
+<hr />
+<h2 id="72-mental-model-a-compile-time-interpreter">7.2 Mental model: a compile-time interpreter</h2>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>   &quot;/users/:id&quot;   ──ParamKeys──►  &quot;id&quot;   ──►  { id: string }   ──►  c.req.param(&#39;id&#39;): string
+   (a string)       (Ch 7.3)              (a typed record)            (typed accessor)
+
+   app.get(&#39;/users/:id&#39;, h)  ──ToSchema──►  S grows: { &#39;/users/:id&#39;: { $get: … } }
+                                (Ch 7.4)         │
+                                                 └──►  hc&lt;typeof app&gt;  ──►  client.users[&#39;:id&#39;].$get()
+                                                          (Ch 7.5)            fully typed
+</code></pre></div></figure>
+
+<p>Two type-level engines, layered. <code>ParamKeys</code> reads a single path string. <code>ToSchema</code> accumulates every
+route into a giant type <code>S</code>, carried as the second type parameter of <code>Hono&lt;E, S, BasePath&gt;</code>
+(<code>src/hono.ts:16</code>). The <code>hc</code> client is "just" a function that reads <code>S</code> back out.</p>
+<hr />
+<h2 id="73-path-typed-params-paramkeys">7.3 Path → typed params: <code>ParamKeys</code></h2>
+<p>The smallest engine first. How does <code>/users/:id</code> become <code>'id'</code>? Read <code>src/types.ts:2706</code>:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">ParamKeys</span><span class="o">&lt;</span><span class="nx">Path</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">Path</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="sb">`</span><span class="si">${</span><span class="nx">infer</span><span class="w"> </span><span class="nx">Component</span><span class="si">}</span><span class="sb">/</span><span class="si">${</span><span class="nx">infer</span><span class="w"> </span><span class="nx">Rest</span><span class="si">}</span><span class="sb">`</span>
+<span class="w">  </span><span class="o">?</span><span class="w"> </span><span class="nx">ParamKey</span><span class="o">&lt;</span><span class="nx">Component</span><span class="o">&gt;</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nx">ParamKeys</span><span class="o">&lt;</span><span class="nx">Rest</span><span class="o">&gt;</span><span class="w">     </span><span class="c1">// split on &#39;/&#39;, recurse</span>
+<span class="w">  </span><span class="o">:</span><span class="w"> </span><span class="nx">ParamKey</span><span class="o">&lt;</span><span class="nx">Path</span><span class="o">&gt;</span>
+</code></pre></div></figure>
+
+<p>It recursively splits the path string on <code>/</code> (template-literal inference, §0.4) and runs each segment
+through <code>ParamKey</code> (<code>src/types.ts:2698</code>):</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="kr">type</span><span class="w"> </span><span class="nx">ParamKey</span><span class="o">&lt;</span><span class="nx">Component</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">Component</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="sb">`:</span><span class="si">${</span><span class="nx">infer</span><span class="w"> </span><span class="nx">NameWithPattern</span><span class="si">}</span><span class="sb">`</span><span class="w">   </span><span class="c1">// starts with &#39;:&#39;</span>
+<span class="w">  </span><span class="o">?</span><span class="w"> </span><span class="nx">NameWithPattern</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="sb">`</span><span class="si">${</span><span class="nx">infer</span><span class="w"> </span><span class="nx">Name</span><span class="si">}</span><span class="sb">{</span><span class="si">${</span><span class="nx">infer</span><span class="w"> </span><span class="nx">Rest</span><span class="si">}</span><span class="sb">`</span><span class="w">                  </span><span class="c1">// has a {pattern}?</span>
+<span class="w">    </span><span class="o">?</span><span class="w"> </span><span class="nx">Rest</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="sb">`</span><span class="si">${</span><span class="nx">infer</span><span class="w"> </span><span class="nx">_Pattern</span><span class="si">}</span><span class="sb">?`</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="sb">`</span><span class="si">${</span><span class="nx">Name</span><span class="si">}</span><span class="sb">?`</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="nx">Name</span><span class="w">               </span><span class="c1">// optional?</span>
+<span class="w">    </span><span class="o">:</span><span class="w"> </span><span class="nx">NameWithPattern</span><span class="w">                                                       </span><span class="c1">// plain :name</span>
+<span class="w">  </span><span class="o">:</span><span class="w"> </span><span class="nx">never</span><span class="w">                                                                   </span><span class="c1">// literal segment → drop</span>
+</code></pre></div></figure>
+
+<p>So <code>ParamKeys&lt;'/users/:id/posts/:slug'&gt;</code> evaluates to <code>'id' | 'slug'</code>. A companion type,
+<code>ParamKeyToRecord</code> (<code>src/types.ts:2710</code>), turns that union into <code>{ id: string; slug: string }</code>, which is
+the return type of <code>c.req.param()</code>. That's the entire path-typing engine: a recursive conditional type
+plus a mapped type. No magic — a tiny interpreter the compiler runs over your string literals.</p>
+<div class="callout note"><span class="ic">🧠</span>
+<p> <strong>Mental model:</strong> the compiler is <em>parsing your route paths at type-check time</em>. Every <code>:param</code>
+becomes a key; literal segments become <code>never</code> and vanish. When you see <code>c.req.param('id')</code> autocomplete,
+you're watching <code>ParamKeys</code> run.</p>
+</div>
+<hr />
+<h2 id="74-routes-a-schema-toschema">7.4 Routes → a schema: <code>ToSchema</code></h2>
+<p>Each call to <code>app.get(...)</code> returns a <code>Hono</code> with a <em>wider</em> <code>S</code> — the accumulated route schema. The widening
+is done by <code>ToSchema</code> (<code>src/types.ts:2500</code>), which produces an entry shaped like:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="s1">&#39;/users/:id&#39;</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">$get</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">input</span><span class="o">:</span><span class="w"> </span><span class="err">…</span><span class="p">;</span><span class="w"> </span><span class="nx">output</span><span class="o">:</span><span class="w"> </span><span class="err">…</span><span class="p">;</span><span class="w"> </span><span class="nx">outputFormat</span><span class="o">:</span><span class="w"> </span><span class="err">…</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div></figure>
+
+<p>keyed by path, then by <code>$method</code>. As you chain <code>.get().post()</code>, these entries merge into one big <code>S</code>. The
+crucial property: <code>S</code> is part of the app's <em>type</em>, so <code>typeof app</code> carries the complete API description.
+That's what the client reads next. (<code>Handler</code> <code>src/types.ts:76</code>, <code>MiddlewareHandler</code> <code>:83</code>, <code>Env</code> <code>:30</code>,
+<code>Input</code> <code>:42</code> are the supporting vocabulary these schema types are built from.)</p>
+<div class="callout info"><span class="ic">📌</span>
+<p> You never see <code>S</code> directly — it's inferred. But it's why <code>export type AppType = typeof app</code> (the line
+every Hono RPC tutorial tells you to write) is enough to give a separate client project full type
+information. You're exporting <code>S</code>.</p>
+</div>
+<hr />
+<h2 id="75-the-rpc-client-hc">7.5 The RPC client: <code>hc</code></h2>
+<p>Now the payoff. <code>hc</code> (<code>src/client/client.ts:133</code>) is a function that takes your app <em>type</em> and a base URL,
+and returns a typed client:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">hc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">&lt;</span><span class="nx">T</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="nx">Hono</span><span class="o">&lt;</span><span class="nx">any</span><span class="p">,</span><span class="w"> </span><span class="nx">any</span><span class="p">,</span><span class="w"> </span><span class="nx">any</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="nx">Prefix</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">string</span><span class="o">&gt;</span><span class="p">(</span>
+<span class="w">  </span><span class="nx">baseUrl</span><span class="o">:</span><span class="w"> </span><span class="kt">Prefix</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">options?</span><span class="o">:</span><span class="w"> </span><span class="kt">ClientRequestOptions</span>
+<span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">createProxy</span><span class="p">(</span><span class="cm">/* path-building Proxy */</span><span class="p">,</span><span class="w"> </span><span class="p">[])</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">UnionToIntersection</span><span class="o">&lt;</span><span class="nx">Client</span><span class="o">&lt;</span><span class="nx">T</span><span class="p">,</span><span class="w"> </span><span class="nx">Prefix</span><span class="o">&gt;&gt;</span>
+</code></pre></div></figure>
+
+<p>At runtime it's a <strong><code>Proxy</code></strong> that builds a URL from the property path you access and issues a <code>fetch</code>. At
+<em>compile</em> time, the <code>Client&lt;T&gt;</code> type reads the <code>S</code> schema out of <code>T</code> and projects it into a nested object of
+typed methods. So:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">hc</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono/client&#39;</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">client</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">hc</span><span class="o">&lt;</span><span class="ow">typeof</span><span class="w"> </span><span class="nx">app</span><span class="o">&gt;</span><span class="p">(</span><span class="s1">&#39;https://api.example.com&#39;</span><span class="p">)</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">res</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">client</span><span class="p">.</span><span class="nx">users</span><span class="p">[</span><span class="s1">&#39;:id&#39;</span><span class="p">].</span><span class="nx">$get</span><span class="p">({</span><span class="w"> </span><span class="nx">param</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;42&#39;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span><span class="w">  </span><span class="c1">// ← param typed from the route!</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">data</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">res</span><span class="p">.</span><span class="nx">json</span><span class="p">()</span><span class="w">                                         </span><span class="c1">// ← response type from the handler</span>
+</code></pre></div></figure>
+
+<p>The <code>param</code> argument is typed by <code>ParamKeys</code> (§7.3); the response is typed by what your handler returned.
+<code>InferRequestType</code> / <code>InferResponseType</code> (<code>src/client/types.ts:251</code>) are the helpers that extract those for
+you when you need the bare types. <strong>No generated code</strong> — the client is a <code>Proxy</code> plus a type projection.</p>
+<div class="callout tip"><span class="ic">💡</span>
+<p> <strong>Tip:</strong> this is the same trick tRPC popularized, but Hono does it without a server adapter or a
+codegen step — because the route schema is already in the app's type. The frontend imports a <em>type</em> from
+the backend, never a value, so nothing bundles across the boundary.</p>
+</div>
+<hr />
+<h2 id="76-validation-validator">7.6 Validation: <code>validator()</code></h2>
+<p>Types describe the <em>shape</em> the compiler trusts; <code>validator()</code> enforces it at <em>runtime</em>. Read
+<code>src/validator/validator.ts:46</code>. It's a middleware factory:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">validator</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">target</span><span class="p">,</span><span class="w"> </span><span class="nx">validationFunc</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">next</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="c1">// 1. pull the raw value for `target`: &#39;json&#39; | &#39;form&#39; | &#39;query&#39; | &#39;param&#39; | &#39;header&#39; | &#39;cookie&#39;</span>
+<span class="w">  </span><span class="c1">// 2. value = await validationFunc(value, c)</span>
+<span class="w">  </span><span class="c1">// 3. if it returned a Response (validation failed) → return it (short-circuit)</span>
+<span class="w">  </span><span class="c1">// 4. else c.req.addValidatedData(target, value)   ← stash the parsed/typed value</span>
+<span class="w">  </span><span class="c1">// 5. await next()</span>
+<span class="p">}</span>
+</code></pre></div></figure>
+
+<p><code>target</code> says <em>where</em> to read (the JSON body, the query string, path params…); <code>validationFunc</code> is your
+check (often a Zod schema via <code>@hono/zod-validator</code>). On success it stashes the validated value via
+<code>c.req.addValidatedData(...)</code> so your handler reads it back, fully typed, with <code>c.req.valid('json')</code>
+(<code>src/request.ts:351</code>). On failure it returns a <code>Response</code> and the onion short-circuits — the route handler
+never runs. It's an ordinary middleware (Chapter 5), so it composes like any other layer.</p>
+<hr />
+<h2 id="77-lab-7-types-end-to-end">7.7 Lab 7 — types end-to-end</h2>
+<p>You'll watch the compiler enforce the route type. In a TS-aware editor (or with <code>tsc</code>), reuse <code>hono-hello</code>:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// rpc.ts</span>
+<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Hono</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono&#39;</span>
+<span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">hc</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono/client&#39;</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Hono</span><span class="p">()</span>
+<span class="w">  </span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">&#39;/users/:id&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">({</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="kt">c.req.param</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">),</span><span class="w"> </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;Ada&#39;</span><span class="w"> </span><span class="p">}))</span>
+
+<span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">AppType</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">typeof</span><span class="w"> </span><span class="nx">app</span><span class="w">             </span><span class="c1">// ← exporting S</span>
+
+<span class="kd">const</span><span class="w"> </span><span class="nx">client</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">hc</span><span class="o">&lt;</span><span class="nx">AppType</span><span class="o">&gt;</span><span class="p">(</span><span class="s1">&#39;http://localhost:3000&#39;</span><span class="p">)</span>
+<span class="k">async</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">demo</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">res</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">client</span><span class="p">.</span><span class="nx">users</span><span class="p">[</span><span class="s1">&#39;:id&#39;</span><span class="p">].</span><span class="nx">$get</span><span class="p">({</span><span class="w"> </span><span class="nx">param</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;42&#39;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span>
+<span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">user</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">res</span><span class="p">.</span><span class="nx">json</span><span class="p">()</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">user</span><span class="p">.</span><span class="nx">name</span><span class="p">.</span><span class="nx">toUpperCase</span><span class="p">())</span><span class="w">       </span><span class="c1">// user.name is typed as string</span>
+<span class="w">  </span><span class="c1">// @ts-expect-error — &#39;id&#39; must be a string; this should fail to compile:</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">client</span><span class="p">.</span><span class="nx">users</span><span class="p">[</span><span class="s1">&#39;:id&#39;</span><span class="p">].</span><span class="nx">$get</span><span class="p">({</span><span class="w"> </span><span class="nx">param</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="kt">42</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span>
+<span class="p">}</span>
+</code></pre></div></figure>
+
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">bash</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>../hono<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npx<span class="w"> </span>tsc<span class="w"> </span>--noEmit<span class="w"> </span>~/hono-hello/rpc.ts<span class="w">   </span><span class="c1"># or just hover types in your editor</span>
+</code></pre></div></figure>
+
+<div class="callout lab"><span class="ic">🧪</span>
+<p> <strong>Record in <code>labs/lab7-types.md</code>:</strong> confirm <code>user.name</code> autocompletes as a string, and that the
+<code>@ts-expect-error</code> line is genuinely an error if you remove the comment (passing <code>id: 42</code> must fail —
+<code>ParamKeys</code> typed it as a string). You've now seen the full chain: <code>ParamKeys</code> → <code>ToSchema</code> → <code>hc</code>, all
+at compile time, all erased at runtime.</p>
+</div>
+<hr />
+<h2 id="78-checkpoint">7.8 Checkpoint</h2>
+<ol>
+<li>What does <code>ParamKeys&lt;'/a/:b/c/:d'&gt;</code> evaluate to, and which two types implement it?</li>
+<li>What is <code>S</code> in <code>Hono&lt;E, S, BasePath&gt;</code>, and how does it grow as you add routes?</li>
+<li>At runtime, what <em>is</em> the <code>hc</code> client? At compile time, where do its types come from?</li>
+<li>Why does Hono RPC need no code generation step, unlike OpenAPI-based clients?</li>
+<li>What does <code>validator('json', fn)</code> do on success vs. failure, and how does it relate to Chapter 5?</li>
+</ol>
+<div class="callout note">
+<p>If #1 is shaky, re-read §7.3. If #3–#4 are shaky, re-read §7.4–§7.5 together — the schema and the client
+are two ends of one wire.</p>
+</div>
+<hr />
+<h2 class="connect" id="connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</h2>
+<p>This is the chapter that should make you sit up, given temlet. You've felt the pain of keeping frontend
+types in sync with backend responses — the DTOs that drift, the <code>any</code> that creeps in at the fetch boundary,
+the OpenAPI generator in your build. Hono's <code>hc</code> deletes that whole category of work: the client imports
+<code>typeof app</code> and <em>is</em> the API contract.</p>
+<p>For a Next.js→Tauri migration this is doubly valuable. Tauri already gives you typed <code>invoke()</code> calls to
+Rust commands across the native bridge; Hono gives you the same end-to-end typing across the <em>HTTP</em> bridge.
+So whether a given temlet capability ends up behind a Tauri command or behind a Hono endpoint, the frontend
+calls it with full type safety and no hand-written client. You get one consistent, generated-code-free story
+for "call the backend" on both sides of the web→native seam — which is exactly the kind of consistency that
+keeps a migration from sprawling.</p>
+<p><strong>Next:</strong> <a href="08-capstone-extending-and-staying-current.html">Chapter 8 — Capstone: Extending &amp; Staying Current →</a></p>
+    <nav class="pager"><a class="prev" href="06-runtime-adapters-and-portability.html"><span class="lbl">← Previous</span><span class="ttl">Runtime Adapters &amp; Portability</span></a><a class="next" href="08-capstone-extending-and-staying-current.html"><span class="lbl">Next →</span><span class="ttl">Capstone: Extending &amp; Staying Current</span></a></nav>
+  </article></main>
+  <aside class="toc"><nav><h4>On this page</h4>
+<a class="lvl-2" href="#71-why-it-matters">7.1 Why it matters</a>
+<a class="lvl-2" href="#72-mental-model-a-compile-time-interpreter">7.2 Mental model: a compile-time interpreter</a>
+<a class="lvl-2" href="#73-path-typed-params-paramkeys">7.3 Path → typed params: ParamKeys</a>
+<a class="lvl-2" href="#74-routes-a-schema-toschema">7.4 Routes → a schema: ToSchema</a>
+<a class="lvl-2" href="#75-the-rpc-client-hc">7.5 The RPC client: hc</a>
+<a class="lvl-2" href="#76-validation-validator">7.6 Validation: validator()</a>
+<a class="lvl-2" href="#77-lab-7-types-end-to-end">7.7 Lab 7 — types end-to-end</a>
+<a class="lvl-2" href="#78-checkpoint">7.8 Checkpoint</a>
+<a class="lvl-2" href="#connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</a>
+</nav></aside>
+</div>
+<footer class="site-foot">
+  <a class="foot-brand" href="https://rumitx.com" target="_blank" rel="noopener"><span class="foot-x">X</span> RumitX</a>
+  Hono Internals Handbook · grounded in <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
+  @ <code>v4.12.25</code><br>
+  A <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> publication · Edge AI, human-centric design
+</footer>
+<script src="assets/app.js"></script>
+</body>
+</html>

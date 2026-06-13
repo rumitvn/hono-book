@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chapter 1 — Mental Model &amp;amp; Repo Map · Hono Internals Handbook · RumitX</title>
+<meta name="description" content="A from-the-source handbook on Hono internals — the router (RegExpRouter & TrieRouter), the Context object, the compose middleware onion, runtime adapters, and the type-safe routing & RPC client.">
+<link rel="icon" type="image/svg+xml" href="assets/brand/logo_x.svg">
+<meta name="author" content="RumitX">
+<meta name="theme-color" content="#0B1E2D">
+<link rel="stylesheet" href="assets/styles.css">
+<link rel="stylesheet" href="assets/code.css">
+</head>
+<body>
+<div class="progress" id="progress"></div>
+<header class="header">
+  <button class="icon-btn" id="menu-btn" aria-label="Open navigation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+  <a class="brand" href="index.html"><span class="mark"><span>X</span></span> Hono Internals Handbook</a>
+  <span class="spacer"></span>
+  <span class="meta-pill">pinned&nbsp;v4.12.25</span>
+  <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+</header>
+<div class="backdrop"></div>
+<div class="shell">
+  <aside class="rail"><nav>
+<a class="brand-mini" href="index.html"><img src="assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
+<h4>Chapters</h4>
+<a class="" href="00-environment-and-typescript-web-refresher.html"><span class="num">00</span><span>Environment &amp; TypeScript / Web-standards Refresher</span></a>
+<a class="active" href="01-mental-model-and-repo-map.html"><span class="num">01</span><span>Mental Model &amp; Repo Map</span></a>
+<a class="" href="02-app-lifecycle-and-request.html"><span class="num">02</span><span>The App Object &amp; HonoRequest</span></a>
+<a class="" href="03-the-router.html"><span class="num">03</span><span>The Router</span><span class="flag">★</span></a>
+<a class="" href="04-context-and-responses.html"><span class="num">04</span><span>Context &amp; Building Responses</span></a>
+<a class="" href="05-the-middleware-onion.html"><span class="num">05</span><span>The Middleware Onion</span></a>
+<a class="" href="06-runtime-adapters-and-portability.html"><span class="num">06</span><span>Runtime Adapters &amp; Portability</span></a>
+<a class="" href="07-typed-routes-rpc-and-validation.html"><span class="num">07</span><span>Typed Routes, the RPC Client &amp; Validation</span></a>
+<a class="" href="08-capstone-extending-and-staying-current.html"><span class="num">08</span><span>Capstone: Extending &amp; Staying Current</span></a>
+<h4>Reference</h4>
+<a class="" href="glossary.html"><span class="num">§</span><span>Glossary &amp; Index</span></a>
+<a href="https://github.com/rumitvn/hono-book" target="_blank" rel="noopener"><span class="num">↗</span><span>GitHub repo</span></a>
+</nav></aside>
+  <main class="content"><article class="article">
+    <div class="crumbs"><a href="index.html">Handbook</a> / Chapter 01</div>
+    <h1 id="chapter-1-mental-model-repo-map">Chapter 1 — Mental Model &amp; Repo Map</h1>
+<div class="callout goal">
+<p><strong>Goal:</strong> Build the five-layer mental model of Hono — <strong>App → Router → compose → Context → Adapter</strong> —
+and trace one real request end-to-end through <code>honojs/hono</code> at <strong><code>v4.12.25</code></strong> (<code>fce483e</code>), naming every
+hop by <code>file:line</code>. By the end you can point at the exact function that runs at each stage of a request.</p>
+</div>
+<hr />
+<h2 id="11-why-it-matters">1.1 Why it matters</h2>
+<p>Hono is small — the core is a few thousand lines of TypeScript — but "small" doesn't mean "obvious." If
+you don't have a layer model, the code reads as a tangle of generics and clever regex. With the model,
+every file has an obvious home and the request flow becomes a straight line you can follow with your
+finger.</p>
+<p>The payoff is debugging power. When a request returns the wrong status, or middleware runs in a
+surprising order, or a route matches that shouldn't — you'll know <em>which layer</em> owns the bug and which
+file to open, instead of guessing.</p>
+<hr />
+<h2 id="12-the-five-layer-model">1.2 The five-layer model</h2>
+<p>Every Hono request passes through these five layers, top to bottom and back:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>   ┌──────────────────────────────────────────────────────────────┐
+   │  ADAPTER          src/adapter/*        runtime → Request       │
+   │  (Workers, Bun, Deno, Node, Lambda)    Response → runtime      │
+   └───────────────┬──────────────────────────────────────────────┘
+                   │  app.fetch(request, env, ctx)
+   ┌───────────────▼──────────────────────────────────────────────┐
+   │  APP            src/hono-base.ts       #dispatch: orchestrate  │
+   │                 src/hono.ts            route table + handlers  │
+   └───────────────┬──────────────────────────────────────────────┘
+                   │  this.router.match(method, path)
+   ┌───────────────▼──────────────────────────────────────────────┐
+   │  ROUTER ★       src/router/*           path → [handlers, params]│
+   │                 (Smart/RegExp/Trie/Linear)                     │
+   └───────────────┬──────────────────────────────────────────────┘
+                   │  compose(matched handlers)
+   ┌───────────────▼──────────────────────────────────────────────┐
+   │  COMPOSE        src/compose.ts         middleware onion + next()│
+   └───────────────┬──────────────────────────────────────────────┘
+                   │  handler(c, next)
+   ┌───────────────▼──────────────────────────────────────────────┐
+   │  CONTEXT        src/context.ts         c.req / c.json / c.env  │
+   │                 src/request.ts         → builds the Response   │
+   └──────────────────────────────────────────────────────────────┘
+</code></pre></div></figure>
+
+<ul>
+<li><strong>Adapter</strong> is the only runtime-specific layer. It does almost nothing: receive a <code>Request</code>, call
+  <code>app.fetch</code>, return the <code>Response</code>. (Chapter 6.)</li>
+<li><strong>App</strong> is the orchestrator — it owns the route table and runs the dispatch algorithm. (Chapter 2.)</li>
+<li><strong>Router</strong> turns a method+path into a list of matching handlers. This is the flagship. (Chapter 3.)</li>
+<li><strong>Compose</strong> chains those handlers into the middleware onion via <code>next()</code>. (Chapter 5.)</li>
+<li><strong>Context</strong> is the <code>c</code> your handler receives, and the response builder. (Chapter 4.)</li>
+</ul>
+<div class="callout note"><span class="ic">🧠</span>
+<p> <strong>Mental model:</strong> the App is a thin conductor. The <em>interesting</em> work is delegated: matching to the
+Router, chaining to Compose, response-building to Context. <code>hono-base.ts</code> mostly wires these together.</p>
+</div>
+<hr />
+<h2 id="13-repo-map-where-everything-lives">1.3 Repo map — where everything lives</h2>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>src/
+├── index.ts          public exports (Ch 0)
+├── hono.ts           the Hono class — picks the default router (Ch 2)
+├── hono-base.ts      HonoBase — route registration, #dispatch, fetch (Ch 2)
+├── router.ts         the Router&lt;T&gt; interface every router implements (Ch 3)
+├── router/           ★ the four router implementations (Ch 3)
+│   ├── linear-router/    simplest: scan every route
+│   ├── pattern-router/   one regex per route
+│   ├── trie-router/      a prefix tree of segments
+│   ├── reg-exp-router/   the &quot;one big regex&quot; engine
+│   └── smart-router/     tries RegExp, falls back to Trie
+├── compose.ts        the middleware onion (Ch 5)
+├── context.ts        the Context `c` + response builders (Ch 4)
+├── request.ts        HonoRequest — wraps web Request (Ch 2/4)
+├── adapter/          per-runtime entry points (Ch 6)
+├── helper/           env(), streaming, cookies, SSE … (Ch 6)
+├── middleware/       25 built-in middleware (cors, jwt, …) (Ch 8)
+├── preset/           tiny / quick — alternate router defaults (Ch 3)
+├── validator/        validator() middleware (Ch 7)
+├── client/           the hc RPC client (Ch 7)
+└── types.ts          the type-level machinery — 2,778 lines (Ch 7)
+</code></pre></div></figure>
+
+<div class="callout info"><span class="ic">📁</span>
+<p> The single biggest file, <code>types.ts</code> (2,778 lines), contains <strong>no runtime code</strong> — it's all
+compile-time types. The runtime core (<code>hono-base.ts</code> + <code>context.ts</code> + <code>compose.ts</code> + <code>router/</code>) is
+remarkably compact. Hono's complexity budget is spent on <em>types</em>, not logic.</p>
+</div>
+<hr />
+<h2 id="14-the-end-to-end-trace-one-get-request">1.4 The end-to-end trace: one GET request</h2>
+<p>Let's follow <code>app.get('/users/:id', handler)</code> being hit by <code>GET /users/42</code>. Open the cited files and
+read along.</p>
+<p><strong>Registration (happens once, at startup):</strong></p>
+<ol>
+<li><code>app.get('/users/:id', handler)</code> is dispatched by the method handler. Its type is declared at
+   <code>src/hono-base.ts:104</code> (<code>get!: HandlerInterface&lt;…&gt;</code>); its <em>implementation</em> is generated in the
+   constructor loop at <code>src/hono-base.ts:128</code>, which ultimately calls the private <code>#addRoute</code>.</li>
+<li><code>src/hono-base.ts:385</code> — <code>#addRoute(method, path, handler)</code> uppercases the method, merges the base
+   path, builds a <code>RouterRoute</code> record, then does the two key lines:
+   - <code>src/hono-base.ts:395</code> — <code>this.router.add(method, path, [handler, r])</code> (hand the route to the router)
+   - <code>src/hono-base.ts:396</code> — <code>this.routes.push(r)</code> (keep a copy for introspection)</li>
+</ol>
+<p><strong>Dispatch (happens per request):</strong></p>
+<ol start="3">
+<li><code>src/hono-base.ts:479</code> — <code>fetch(request, …)</code> is the entrypoint. It calls <code>#dispatch</code>.</li>
+<li><code>src/hono-base.ts:406</code> — <code>#dispatch(request, executionCtx, env, method)</code> runs the request:
+   - <code>src/hono-base.ts:418</code> — <code>const path = this.getPath(request, { env })</code> — extract the pathname.
+     (<code>getPath</code> is <code>src/utils/url.ts:106</code>, wired up at <code>src/hono-base.ts:172</code>.)
+   - <code>src/hono-base.ts:419</code> — <strong><code>const matchResult = this.router.match(method, path)</code></strong> — the Router runs.
+   - <code>src/hono-base.ts:421</code> — <code>const c = new Context(request, { path, matchResult, env, … })</code> — build <code>c</code>.</li>
+<li><strong>Fast path</strong> — <code>src/hono-base.ts:430</code>: <em>if exactly one handler matched</em>, call it directly without
+   <code>compose</code>, for speed. Most routes hit this path.</li>
+<li><strong>Onion path</strong> — <code>src/hono-base.ts:450</code>: with multiple handlers (middleware + route handler),
+   <code>const composed = compose(matchResult[0], this.errorHandler, this.#notFoundHandler)</code> builds the chain,
+   then it's awaited at <code>:452</code>.</li>
+<li>The handler runs, calls <code>c.json({...})</code> (<code>src/context.ts:708</code>), which builds a <code>Response</code>.</li>
+<li><code>#dispatch</code> returns that <code>Response</code>; <code>fetch</code> returns it to the adapter; the adapter hands it to the runtime.</li>
+</ol>
+<p>That's the whole request. Five layers, one straight line.</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>fetch ──► #dispatch ──► getPath ──► router.match ──► new Context
+   (479)      (406)        (418)        (419)            (421)
+                                          │
+                    one handler? ─yes──► call directly        (430)
+                          │no
+                          └──► compose(...) ──► handler(c) ──► c.json() ──► Response
+                                  (450)                          (708)
+</code></pre></div></figure>
+
+<div class="callout tip"><span class="ic">💡</span>
+<p> <strong>Tip:</strong> the fast path at <code>:430</code> is a real performance decision, not an accident. A bare route with no
+middleware skips building the entire <code>compose</code> closure. Keep this in mind in Chapter 5 — <code>compose</code> only
+runs when there's actually an onion to build.</p>
+</div>
+<hr />
+<h2 id="15-lab-1-instrument-the-trace">1.5 Lab 1 — instrument the trace</h2>
+<p>Reuse your <code>hono-hello</code> app from Lab 0. Add a logging middleware so you can <em>see</em> the layers fire in order:</p>
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Hono</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono&#39;</span>
+<span class="kd">const</span><span class="w"> </span><span class="nx">app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Hono</span><span class="p">()</span>
+
+<span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="s1">&#39;*&#39;</span><span class="p">,</span><span class="w"> </span><span class="k">async</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">next</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;→ before&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">req</span><span class="p">.</span><span class="nx">method</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">req</span><span class="p">.</span><span class="nx">path</span><span class="p">)</span><span class="w">   </span><span class="c1">// Context + Request</span>
+<span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">next</span><span class="p">()</span><span class="w">                                         </span><span class="c1">// descend the onion</span>
+<span class="w">  </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;← after &#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">res</span><span class="p">.</span><span class="nx">status</span><span class="p">)</span><span class="w">                </span><span class="c1">// Response exists now</span>
+<span class="p">})</span>
+
+<span class="nx">app</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">&#39;/users/:id&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">json</span><span class="p">({</span><span class="w"> </span><span class="nx">id</span><span class="o">:</span><span class="w"> </span><span class="kt">c.req.param</span><span class="p">(</span><span class="s1">&#39;id&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">}))</span>
+
+<span class="k">export</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="nx">app</span>
+</code></pre></div></figure>
+
+<figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">bash</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>bun<span class="w"> </span>run<span class="w"> </span>--hot<span class="w"> </span>index.ts
+curl<span class="w"> </span>-s<span class="w"> </span>localhost:3000/users/42
+</code></pre></div></figure>
+
+<div class="callout lab"><span class="ic">🧪</span>
+<p> <strong>Record in <code>labs/lab1-trace.md</code>:</strong> the console output order. You should see <code>→ before GET /users/42</code>,
+then <code>← after 200</code>. Because you added a <code>use('*')</code> middleware, this request takes the <strong>onion path</strong>
+(<code>hono-base.ts:450</code>), not the fast path. Now remove the middleware and note that the response is identical —
+that request took the fast path at <code>:430</code>. Same output, different internal route.</p>
+</div>
+<hr />
+<h2 id="16-checkpoint">1.6 Checkpoint</h2>
+<ol>
+<li>Name the five layers, top to bottom, and the one file that owns each.</li>
+<li>Which single line in <code>hono-base.ts</code> invokes the Router? Which line invokes <code>compose</code>?</li>
+<li>What is the difference between the "fast path" and the "onion path" in <code>#dispatch</code>, and what decides
+   which one a request takes?</li>
+<li><code>types.ts</code> is the largest file in the repo. What kind of code does it contain — and what does that tell
+   you about where Hono spends its complexity?</li>
+<li>When does <code>this.router.add(...)</code> run — per request, or once at startup?</li>
+</ol>
+<div class="callout note">
+<p>If #2–#3 are shaky, re-read §1.4. If #1 is shaky, re-read §1.2.</p>
+</div>
+<hr />
+<h2 class="connect" id="connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</h2>
+<p>The five-layer model maps cleanly onto what you already know from Next.js — and it's <em>cleaner</em>. In Next,
+"routing" (the file-system router), "middleware" (<code>middleware.ts</code> running at the edge), and "handler"
+(your route file) are spread across three different mechanisms with three different mental models. Hono
+collapses them into one explicit pipeline you can read in a single file.</p>
+<p>That legibility is exactly what you want crossing into <strong>Tauri</strong>. When temlet's server logic becomes a
+process behind the native shell, you don't want a framework whose request flow is implicit and
+framework-magic; you want one where you can point at <code>#dispatch</code> and say "the request is <em>here</em> now." As
+you read on, notice how little the App layer actually does — that thinness is what makes Hono cheap to
+reason about when you no longer have Next's runtime holding your hand.</p>
+<p><strong>Next:</strong> <a href="02-app-lifecycle-and-request.html">Chapter 2 — The App Object &amp; HonoRequest →</a></p>
+    <nav class="pager"><a class="prev" href="00-environment-and-typescript-web-refresher.html"><span class="lbl">← Previous</span><span class="ttl">Environment &amp; TypeScript / Web-standards Refresher</span></a><a class="next" href="02-app-lifecycle-and-request.html"><span class="lbl">Next →</span><span class="ttl">The App Object &amp; HonoRequest</span></a></nav>
+  </article></main>
+  <aside class="toc"><nav><h4>On this page</h4>
+<a class="lvl-2" href="#11-why-it-matters">1.1 Why it matters</a>
+<a class="lvl-2" href="#12-the-five-layer-model">1.2 The five-layer model</a>
+<a class="lvl-2" href="#13-repo-map-where-everything-lives">1.3 Repo map — where everything lives</a>
+<a class="lvl-2" href="#14-the-end-to-end-trace-one-get-request">1.4 The end-to-end trace: one GET request</a>
+<a class="lvl-2" href="#15-lab-1-instrument-the-trace">1.5 Lab 1 — instrument the trace</a>
+<a class="lvl-2" href="#16-checkpoint">1.6 Checkpoint</a>
+<a class="lvl-2" href="#connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</a>
+</nav></aside>
+</div>
+<footer class="site-foot">
+  <a class="foot-brand" href="https://rumitx.com" target="_blank" rel="noopener"><span class="foot-x">X</span> RumitX</a>
+  Hono Internals Handbook · grounded in <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
+  @ <code>v4.12.25</code><br>
+  A <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> publication · Edge AI, human-centric design
+</footer>
+<script src="assets/app.js"></script>
+</body>
+</html>

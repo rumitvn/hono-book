@@ -1,0 +1,10 @@
+.DS_Store
+# Node / Bun build output + deps (labs are run by the reader, never committed)
+node_modules/
+dist/
+.wrangler/
+*.tsbuildinfo
+# Local env / secrets
+.env
+.dev.vars
+*.log
