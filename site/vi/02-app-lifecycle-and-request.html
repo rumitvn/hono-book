@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="vi" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chapter 2 — The App Object &amp; HonoRequest · Hono Internals Handbook · RumitX</title>
-<meta name="description" content="A from-the-source handbook on Hono internals — the four-router routing engine and its RegExpRouter one-regex trick, the Context object, the compose middleware onion, multi-runtime adapters, and the type-safe routing &amp; RPC client.">
-<link rel="icon" type="image/svg+xml" href="assets/brand/logo_x.svg">
+<meta name="description" content="Cuốn sách đọc thẳng từ source về internals của Hono — routing engine bốn router và mẹo gộp-một-regex của RegExpRouter, Context object, compose middleware onion, các runtime adapter, và routing type-safe cùng RPC client.">
+<link rel="icon" type="image/svg+xml" href="../assets/brand/logo_x.svg">
 <meta name="author" content="RumitX">
 <meta name="theme-color" content="#0B1E2D">
-<link rel="alternate" hreflang="en" href="02-app-lifecycle-and-request.html">
-<link rel="alternate" hreflang="vi" href="vi/02-app-lifecycle-and-request.html">
-<link rel="alternate" hreflang="x-default" href="02-app-lifecycle-and-request.html">
-<link rel="stylesheet" href="assets/styles.css">
-<link rel="stylesheet" href="assets/code.css">
+<link rel="alternate" hreflang="en" href="../02-app-lifecycle-and-request.html">
+<link rel="alternate" hreflang="vi" href="02-app-lifecycle-and-request.html">
+<link rel="alternate" hreflang="x-default" href="../02-app-lifecycle-and-request.html">
+<link rel="stylesheet" href="../assets/styles.css">
+<link rel="stylesheet" href="../assets/code.css">
 <style>
 .lang-switch{display:inline-flex;align-items:center;gap:.1rem;padding:.15rem;
   border:1px solid var(--border);border-radius:999px;background:var(--surface);
@@ -31,14 +31,14 @@
   <a class="brand" href="index.html"><span class="mark"><span>X</span></span> Hono Internals Handbook</a>
   <span class="spacer"></span>
   <span class="meta-pill">pinned&nbsp;v4.12.25</span>
-  <div class="lang-switch"><span aria-current="true">EN</span><a href="vi/02-app-lifecycle-and-request.html" hreflang="vi">VI</a></div>
+  <div class="lang-switch"><a href="../02-app-lifecycle-and-request.html" hreflang="en">EN</a><span aria-current="true">VI</span></div>
   <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
 </header>
 <div class="backdrop"></div>
 <div class="shell">
   <aside class="rail"><nav>
-<a class="brand-mini" href="index.html"><img src="assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
-<h4>Chapters</h4>
+<a class="brand-mini" href="index.html"><img src="../assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
+<h4>Chương</h4>
 <a class="" href="00-environment-and-typescript-web-refresher.html"><span class="num">00</span><span>Environment &amp; TypeScript / Web-standards Refresher</span></a>
 <a class="" href="01-mental-model-and-repo-map.html"><span class="num">01</span><span>Mental Model &amp; Repo Map</span></a>
 <a class="active" href="02-app-lifecycle-and-request.html"><span class="num">02</span><span>The App Object &amp; HonoRequest</span></a>
@@ -48,27 +48,22 @@
 <a class="" href="06-runtime-adapters-and-portability.html"><span class="num">06</span><span>Runtime Adapters &amp; Portability</span></a>
 <a class="" href="07-typed-routes-rpc-and-validation.html"><span class="num">07</span><span>Typed Routes, the RPC Client &amp; Validation</span></a>
 <a class="" href="08-capstone-extending-and-staying-current.html"><span class="num">08</span><span>Capstone: Extending &amp; Staying Current</span></a>
-<h4>Reference</h4>
+<h4>Tham khảo</h4>
 <a class="" href="glossary.html"><span class="num">§</span><span>Glossary &amp; Index</span></a>
 <a href="https://github.com/rumitvn/hono-book" target="_blank" rel="noopener"><span class="num">↗</span><span>GitHub repo</span></a>
 </nav></aside>
   <main class="content"><article class="article">
-    <div class="crumbs"><a href="index.html">Handbook</a> / Chapter 02</div>
+    <div class="crumbs"><a href="index.html">Handbook</a> / Chương 02</div>
     <h1 id="chapter-2-the-app-object-honorequest">Chapter 2 — The App Object &amp; HonoRequest</h1>
 <div class="callout goal">
-<p><strong>Goal:</strong> Understand the foundational runtime that Chapter 3 builds on — how <code>new Hono()</code> is born, how
-<code>.get()</code> / <code>.use()</code> register routes, how <code>fetch</code> dispatches a request, and how <code>HonoRequest</code> wraps the
-web <code>Request</code>. Grounded in <code>honojs/hono</code> at <strong><code>v4.12.25</code></strong> (<code>fce483e</code>).</p>
+<p><strong>Goal:</strong> Hiểu tầng runtime nền tảng mà Chương 3 dựng lên bên trên — <code>new Hono()</code> ra đời thế nào, <code>.get()</code> / <code>.use()</code> đăng ký route ra sao, <code>fetch</code> dispatch một request như thế nào, và <code>HonoRequest</code> bọc quanh <code>Request</code> của web ra sao. Bám theo <code>honojs/hono</code> tại <strong><code>v4.12.25</code></strong> (<code>fce483e</code>).</p>
 </div>
 <hr />
-<h2 id="21-why-it-matters">2.1 Why it matters</h2>
-<p>The <code>Hono</code> app is the object you touch every day, but its internals are usually invisible. Before we can
-understand the router (Chapter 3) or the middleware onion (Chapter 5), we need to know <em>who calls them and
-when</em>: where routes are stored, what <code>app.get(...)</code> actually does, and what the <code>fetch</code> entrypoint hands
-down to the lower layers. This chapter is the spine the rest of the book hangs on.</p>
+<h2 id="21-vi-sao-quan-trong">2.1 Vì sao quan trọng</h2>
+<p><code>Hono</code> app là cái object bạn đụng vào mỗi ngày, nhưng phần ruột của nó thường vô hình. Trước khi hiểu được router (Chương 3) hay lớp middleware onion (Chương 5), ta cần biết <em>ai gọi chúng và lúc nào</em>: route được cất ở đâu, <code>app.get(...)</code> thực sự làm gì, và cái entrypoint <code>fetch</code> chuyển xuống các tầng dưới những gì. Chương này là xương sống mà phần còn lại của cuốn sách treo lên.</p>
 <hr />
-<h2 id="22-two-classes-hono-and-honobase">2.2 Two classes: <code>Hono</code> and <code>HonoBase</code></h2>
-<p>Open <code>src/hono.ts</code> — it's only 34 lines. The <code>Hono</code> class you import does almost nothing itself:</p>
+<h2 id="22-hai-class-hono-va-honobase">2.2 Hai class: <code>Hono</code> và <code>HonoBase</code></h2>
+<p>Mở <code>src/hono.ts</code> — nó chỉ vỏn vẹn 34 dòng. Class <code>Hono</code> bạn import gần như không tự làm gì:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// src/hono.ts:16</span>
 <span class="k">export</span><span class="w"> </span><span class="kd">class</span><span class="w"> </span><span class="nx">Hono</span><span class="o">&lt;</span><span class="err">…</span><span class="o">&gt;</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="nx">HonoBase</span><span class="o">&lt;</span><span class="err">…</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="kr">constructor</span><span class="p">(</span><span class="nx">options</span><span class="o">:</span><span class="w"> </span><span class="kt">HonoOptions</span><span class="o">&lt;</span><span class="nx">E</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{})</span><span class="w"> </span><span class="p">{</span>
@@ -80,29 +75,21 @@ down to the lower layers. This chapter is the spine the rest of the book hangs o
 <span class="p">}</span>
 </code></pre></div></figure>
 
-<p><code>Hono</code>'s entire job is to <strong>choose a default router</strong> (<code>src/hono.ts:28</code>). Everything else — registration,
-dispatch, error handling — lives in the parent class <code>HonoBase</code> (<code>src/hono-base.ts:98</code>). This split is
-deliberate: the <em>presets</em> (<code>src/preset/tiny.ts</code>, <code>src/preset/quick.ts</code>) are alternate <code>Hono</code> subclasses
-that pick a different router, reusing all of <code>HonoBase</code> unchanged. We'll meet them in Chapter 3.</p>
+<p>Toàn bộ nhiệm vụ của <code>Hono</code> là <strong>chọn một router mặc định</strong> (<code>src/hono.ts:28</code>). Mọi thứ khác — đăng ký, dispatch, xử lý lỗi — nằm trong class cha <code>HonoBase</code> (<code>src/hono-base.ts:98</code>). Sự tách đôi này là cố ý: các <em>preset</em> (<code>src/preset/tiny.ts</code>, <code>src/preset/quick.ts</code>) là những subclass <code>Hono</code> khác nhau, mỗi cái chọn một router khác nhau nhưng tái dùng nguyên vẹn toàn bộ <code>HonoBase</code>. Ta sẽ gặp lại chúng ở Chương 3.</p>
 <div class="callout note"><span class="ic">🧠</span>
-<p> <strong>Mental model:</strong> <code>HonoBase</code> is the engine; <code>Hono</code> is a thin trim package that bolts on a router. If
-you ever wondered why there are two classes, this is it — it's the seam that lets the router be swapped.</p>
+<p> <strong>Mental model:</strong> <code>HonoBase</code> là động cơ; <code>Hono</code> là lớp vỏ mỏng bắt vít thêm một router. Nếu bạn từng thắc mắc vì sao lại có tới hai class, thì đây chính là câu trả lời — đó là đường ghép cho phép tráo router.</p>
 </div>
 <hr />
-<h2 id="23-where-routes-live">2.3 Where routes live</h2>
-<p><code>HonoBase</code> keeps routes in <strong>two</strong> places (<code>src/hono-base.ts</code>):</p>
+<h2 id="23-route-song-o-au">2.3 Route sống ở đâu</h2>
+<p><code>HonoBase</code> giữ route ở <strong>hai</strong> chỗ (<code>src/hono-base.ts</code>):</p>
 <ul>
-<li><code>src/hono-base.ts:118</code> — <code>router!: Router&lt;[H, RouterRoute]&gt;</code> — the active router. This is what <em>matches</em>
-  at request time. (The <code>!</code> means a subclass must assign it — which <code>Hono</code> does in §2.2.)</li>
-<li><code>src/hono-base.ts:124</code> — <code>routes: RouterRoute[] = []</code> — a plain array copy of every registered route,
-  used for introspection (e.g. <code>app.routes</code>) and for <code>app.route()</code> mounting. It is <em>not</em> used for matching.</li>
+<li><code>src/hono-base.ts:118</code> — <code>router!: Router&lt;[H, RouterRoute]&gt;</code> — router đang hoạt động. Đây là thứ <em>match</em> lúc có request. (Dấu <code>!</code> nghĩa là một subclass phải gán nó — mà <code>Hono</code> làm đúng như vậy ở §2.2.)</li>
+<li><code>src/hono-base.ts:124</code> — <code>routes: RouterRoute[] = []</code> — một bản sao dạng mảng phẳng của mọi route đã đăng ký, dùng để introspection (ví dụ <code>app.routes</code>) và để mount qua <code>app.route()</code>. Nó <em>không</em> dùng cho việc match.</li>
 </ul>
-<p>So registration writes to two structures: the router (optimized for matching) and the array (a flat
-record). Keep that distinction — the router is the hot path, the array is bookkeeping.</p>
+<p>Vậy nên đăng ký ghi vào hai cấu trúc: router (tối ưu cho match) và mảng (một bản ghi phẳng). Nhớ kỹ ranh giới này — router là hot path, còn mảng là sổ sách.</p>
 <hr />
-<h2 id="24-route-registration-what-appget-does">2.4 Route registration: what <code>app.get(...)</code> does</h2>
-<p><code>get</code>, <code>post</code>, etc. are declared as typed fields (<code>src/hono-base.ts:104</code>) but <strong>implemented in the
-constructor</strong> by a loop (<code>src/hono-base.ts:128</code>):</p>
+<h2 id="24-ang-ky-route-appget-lam-gi">2.4 Đăng ký route: <code>app.get(...)</code> làm gì</h2>
+<p><code>get</code>, <code>post</code>, v.v. được khai báo dưới dạng field có kiểu (<code>src/hono-base.ts:104</code>) nhưng <strong>được implement trong constructor</strong> bằng một vòng lặp (<code>src/hono-base.ts:128</code>):</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// src/hono-base.ts:128 — for each HTTP method, install a handler:</span>
 <span class="k">this</span><span class="p">[</span><span class="nx">method</span><span class="p">]</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">args1</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nx">H</span><span class="p">,</span><span class="w"> </span><span class="nx">...args</span><span class="o">:</span><span class="w"> </span><span class="kt">H</span><span class="p">[])</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="ow">typeof</span><span class="w"> </span><span class="nx">args1</span><span class="w"> </span><span class="o">===</span><span class="w"> </span><span class="s1">&#39;string&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
@@ -117,12 +104,9 @@ constructor</strong> by a loop (<code>src/hono-base.ts:128</code>):</p>
 <span class="p">}</span>
 </code></pre></div></figure>
 
-<p>Two things to notice. First, <strong>multiple handlers register as multiple routes</strong> for the same path — that's
-how <code>app.get('/x', mw1, mw2, finalHandler)</code> works; each becomes a separately-matched entry. Second, the
-method returns <code>this</code>, so calls chain.</p>
-<p><code>use</code> is the same idea but always registers under <code>METHOD_NAME_ALL</code> and defaults the path to <code>'*'</code>
-(<code>src/hono-base.ts:156</code>). That's why <code>app.use(mw)</code> (no path) applies to every route.</p>
-<p>All of these funnel into the single private method:</p>
+<p>Hai điều đáng để ý. Thứ nhất, <strong>nhiều handler đăng ký thành nhiều route</strong> cho cùng một path — đó là cách <code>app.get('/x', mw1, mw2, finalHandler)</code> chạy được; mỗi cái trở thành một entry được match riêng. Thứ hai, method trả về <code>this</code>, nên các lời gọi nối chuỗi được.</p>
+<p><code>use</code> cũng cùng ý tưởng nhưng luôn đăng ký dưới <code>METHOD_NAME_ALL</code> và mặc định path là <code>'*'</code> (<code>src/hono-base.ts:156</code>). Đó là lý do <code>app.use(mw)</code> (không path) áp lên mọi route.</p>
+<p>Tất cả đều đổ về đúng một private method:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// src/hono-base.ts:385</span>
 <span class="n">#addRoute</span><span class="p">(</span><span class="nx">method</span><span class="p">,</span><span class="w"> </span><span class="nx">path</span><span class="p">,</span><span class="w"> </span><span class="nx">handler</span><span class="p">,</span><span class="w"> </span><span class="nx">baseRoutePath</span><span class="o">?</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="nx">method</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">method</span><span class="p">.</span><span class="nx">toUpperCase</span><span class="p">()</span>
@@ -134,15 +118,11 @@ method returns <code>this</code>, so calls chain.</p>
 </code></pre></div></figure>
 
 <div class="callout info"><span class="ic">📌</span>
-<p> The handler stored in the router is the <strong>tuple</strong> <code>[handler, r]</code> (<code>:395</code>), not the bare handler. The
-router carries that opaque payload through matching and hands it back untouched — the router never knows
-what a "handler" is. This is why the <code>Router&lt;T&gt;</code> interface is generic in <code>T</code>; we'll see that in Chapter 3.</p>
+<p> Cái handler được cất trong router là <strong>tuple</strong> <code>[handler, r]</code> (<code>:395</code>), không phải handler trần. Router mang cái payload mờ đục đó xuyên qua quá trình match rồi trả lại y nguyên — router không bao giờ biết một "handler" là cái gì. Đây là lý do interface <code>Router&lt;T&gt;</code> generic theo <code>T</code>; ta sẽ thấy điều đó ở Chương 3.</p>
 </div>
-<p>There's also <code>app.route(path, subApp)</code> (<code>src/hono-base.ts:208</code>) for mounting one Hono app under another,
-<code>onError</code> (<code>src/hono-base.ts:271</code>), and <code>notFound</code> (<code>src/hono-base.ts:291</code>) — we'll use those in Chapters 5
-and 8.</p>
+<p>Còn có <code>app.route(path, subApp)</code> (<code>src/hono-base.ts:208</code>) để mount một Hono app vào bên trong một Hono app khác, <code>onError</code> (<code>src/hono-base.ts:271</code>), và <code>notFound</code> (<code>src/hono-base.ts:291</code>) — ta sẽ dùng chúng ở Chương 5 và 8.</p>
 <hr />
-<h2 id="25-dispatch-what-fetch-does">2.5 Dispatch: what <code>fetch</code> does</h2>
+<h2 id="25-dispatch-fetch-lam-gi">2.5 Dispatch: <code>fetch</code> làm gì</h2>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>fetch(request, env, ctx)              src/hono-base.ts:479
    │
    └─► #dispatch(request, ctx, env, method)        :406
@@ -154,27 +134,20 @@ and 8.</p>
           └─ N handlers? compose(...)(c) (onion path)      :450   ◄── Compose (Ch 5)
 </code></pre></div></figure>
 
-<p>The entrypoint is tiny (<code>src/hono-base.ts:479</code>): <code>fetch</code> just forwards to the private <code>#dispatch</code>. The
-real work is <code>#dispatch</code> (<code>src/hono-base.ts:406</code>):</p>
+<p>Entrypoint bé xíu (<code>src/hono-base.ts:479</code>): <code>fetch</code> chỉ chuyển tiếp sang private <code>#dispatch</code>. Phần việc thật nằm ở <code>#dispatch</code> (<code>src/hono-base.ts:406</code>):</p>
 <ul>
-<li><strong>HEAD handling</strong> (<code>:413</code>) — a <code>HEAD</code> request is re-dispatched as <code>GET</code> and its body discarded. Hono
-  never makes you write a separate HEAD handler.</li>
-<li><strong>Path extraction</strong> (<code>:418</code>) — <code>this.getPath(request, { env })</code>. By default this is <code>getPath</code> from
-  <code>src/utils/url.ts:106</code>, wired up at <code>src/hono-base.ts:172</code> (or <code>getPathNoStrict</code> when <code>strict: false</code>).</li>
-<li><strong>Matching</strong> (<code>:419</code>) — <code>this.router.match(method, path)</code> returns <code>[handlers, paramStash]</code>. This is the
-  Router layer; Chapter 3.</li>
-<li><strong>Context creation</strong> (<code>:421</code>) — <code>new Context(request, { path, matchResult, env, executionCtx,
-  notFoundHandler })</code>. The match result is handed to the Context so <code>c.req.param()</code> can resolve later.</li>
-<li><strong>Fast vs onion</strong> (<code>:430</code> / <code>:450</code>) — covered in §1.4 and detailed in Chapter 5.</li>
+<li><strong>Xử lý HEAD</strong> (<code>:413</code>) — một request <code>HEAD</code> được dispatch lại thành <code>GET</code> và bỏ body của nó đi. Hono không bao giờ bắt bạn phải viết một HEAD handler riêng.</li>
+<li><strong>Trích path</strong> (<code>:418</code>) — <code>this.getPath(request, { env })</code>. Mặc định đây là <code>getPath</code> từ <code>src/utils/url.ts:106</code>, được nối dây ở <code>src/hono-base.ts:172</code> (hoặc <code>getPathNoStrict</code> khi <code>strict: false</code>).</li>
+<li><strong>Match</strong> (<code>:419</code>) — <code>this.router.match(method, path)</code> trả về <code>[handlers, paramStash]</code>. Đây là tầng Router; Chương 3.</li>
+<li><strong>Tạo Context</strong> (<code>:421</code>) — <code>new Context(request, { path, matchResult, env, executionCtx, notFoundHandler })</code>. Kết quả match được giao cho Context để <code>c.req.param()</code> giải quyết được về sau.</li>
+<li><strong>Fast vs onion</strong> (<code>:430</code> / <code>:450</code>) — đã nói ở §1.4 và mổ kỹ ở Chương 5.</li>
 </ul>
 <div class="callout tip"><span class="ic">💡</span>
-<p> <strong>Tip:</strong> there's a second entrypoint, <code>app.request(...)</code> (<code>src/hono-base.ts</code> ~499), that accepts a URL
-string or a <code>Request</code> and is meant for <strong>tests</strong> — it lets you call your app without a server. You'll use
-it in this chapter's lab.</p>
+<p> <strong>Tip:</strong> có một entrypoint thứ hai, <code>app.request(...)</code> (<code>src/hono-base.ts</code> ~499), nhận một chuỗi URL hoặc một <code>Request</code> và được thiết kế cho <strong>test</strong> — nó cho phép bạn gọi app của mình mà không cần server. Bạn sẽ dùng nó trong lab của chương này.</p>
 </div>
 <hr />
-<h2 id="26-honorequest-a-wrapper-not-a-replacement">2.6 <code>HonoRequest</code>: a wrapper, not a replacement</h2>
-<p><code>c.req</code> is a <code>HonoRequest</code>, not the raw <code>Request</code>. Open <code>src/request.ts:36</code>:</p>
+<h2 id="26-honorequest-mot-wrapper-khong-phai-ban-thay-the">2.6 <code>HonoRequest</code>: một wrapper, không phải bản thay thế</h2>
+<p><code>c.req</code> là một <code>HonoRequest</code>, không phải <code>Request</code> thô. Mở <code>src/request.ts:36</code>:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">class</span><span class="w"> </span><span class="nx">HonoRequest</span><span class="o">&lt;</span><span class="nx">P</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;/&#39;</span><span class="p">,</span><span class="w"> </span><span class="nx">I</span><span class="w"> </span><span class="err">…</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{}</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="nx">raw</span><span class="o">:</span><span class="w"> </span><span class="kt">Request</span><span class="w">              </span><span class="c1">// :51 — the underlying web Request, always reachable</span>
 <span class="w">  </span><span class="nx">path</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="w">              </span><span class="c1">// :68 — the matched pathname</span>
@@ -183,26 +156,20 @@ it in this chapter's lab.</p>
 <span class="p">}</span>
 </code></pre></div></figure>
 
-<p>The key idea: <code>HonoRequest</code> <strong>wraps</strong> the web <code>Request</code> (kept at <code>.raw</code>, <code>src/request.ts:51</code>) and adds
-ergonomics on top. Nothing is hidden — <code>c.req.raw</code> is always the real thing.</p>
-<p>The methods you use daily:</p>
+<p>Ý cốt lõi: <code>HonoRequest</code> <strong>bọc</strong> quanh <code>Request</code> của web (giữ tại <code>.raw</code>, <code>src/request.ts:51</code>) và thêm sự tiện tay lên trên. Không có gì bị giấu — <code>c.req.raw</code> luôn là hàng thật.</p>
+<p>Những method bạn dùng hằng ngày:</p>
 <ul>
-<li><code>param(key?)</code> (<code>src/request.ts:94</code>) — path params from the router's match. <code>c.req.param('id')</code>.</li>
-<li><code>query(key?)</code> (<code>src/request.ts:148</code>) — search-string params. <code>c.req.query('q')</code>.</li>
-<li><code>header(name?)</code> (<code>src/request.ts:185</code>) — request headers.</li>
-<li><code>json()</code> (<code>src/request.ts:253</code>) — <code>this.#cachedBody('text').then(JSON.parse)</code> — note it goes through the
-  <strong>body cache</strong> so a second <code>c.req.json()</code> doesn't try to re-read the consumed stream.</li>
+<li><code>param(key?)</code> (<code>src/request.ts:94</code>) — path param lấy từ kết quả match của router. <code>c.req.param('id')</code>.</li>
+<li><code>query(key?)</code> (<code>src/request.ts:148</code>) — param từ search-string. <code>c.req.query('q')</code>.</li>
+<li><code>header(name?)</code> (<code>src/request.ts:185</code>) — header của request.</li>
+<li><code>json()</code> (<code>src/request.ts:253</code>) — <code>this.#cachedBody('text').then(JSON.parse)</code> — để ý nó đi qua <strong>body cache</strong>, nên lần thứ hai gọi <code>c.req.json()</code> không cố đọc lại cái stream đã bị tiêu thụ.</li>
 </ul>
 <div class="callout warn"><span class="ic">⚠️</span>
-<p> This is the §0.3 gotcha made concrete: a <code>Request</code> body is a one-shot stream. <code>bodyCache</code>
-(<code>src/request.ts:69</code>) is the entire reason you <em>can</em> call <code>c.req.json()</code> from two different middleware on
-the same request without an exception. Caching the parse result is not an optimization here — it's a
-correctness requirement.</p>
+<p> Đây chính là cái bẫy §0.3 được cụ thể hoá: body của một <code>Request</code> là stream chỉ đọc được một lần. <code>bodyCache</code> (<code>src/request.ts:69</code>) là toàn bộ lý do bạn <em>có thể</em> gọi <code>c.req.json()</code> từ hai middleware khác nhau trên cùng một request mà không dính exception. Cache lại kết quả parse ở đây không phải là tối ưu — nó là một yêu cầu về tính đúng đắn.</p>
 </div>
 <hr />
-<h2 id="27-lab-2-registration-and-the-test-entrypoint">2.7 Lab 2 — registration and the test entrypoint</h2>
-<p>In your <code>hono-hello</code> project, prove that multiple handlers become multiple routes, and use the test
-entrypoint so you don't even need a server:</p>
+<h2 id="27-lab-2-ang-ky-va-test-entrypoint">2.7 Lab 2 — đăng ký và test entrypoint</h2>
+<p>Trong dự án <code>hono-hello</code> của bạn, hãy chứng minh rằng nhiều handler trở thành nhiều route, và dùng test entrypoint để thậm chí chẳng cần tới server:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// probe.ts</span>
 <span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Hono</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono&#39;</span>
 <span class="kd">const</span><span class="w"> </span><span class="nx">app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Hono</span><span class="p">()</span>
@@ -220,56 +187,45 @@ entrypoint so you don't even need a server:</p>
 </code></pre></div></figure>
 
 <div class="callout lab"><span class="ic">🧪</span>
-<p> <strong>Record in <code>labs/lab2-app.md</code>:</strong> the contents of <code>app.routes</code> (you should see <em>two</em> entries for
-<code>/users/:id</code> — one <code>ALL</code> from the <code>use('*')</code> middleware, one <code>GET</code>), and the response line. Expected:
-<code>200 ran {"id":"42","q":"hi"}</code>. The <code>x-mw: ran</code> header proves the middleware route matched the same path
-as the handler — exactly the "multiple handlers, multiple routes" point from §2.4.</p>
+<p> <strong>Ghi vào <code>labs/lab2-app.md</code>:</strong> nội dung của <code>app.routes</code> (bạn sẽ thấy <em>hai</em> entry cho <code>/users/:id</code> — một <code>ALL</code> từ middleware <code>use('*')</code>, một <code>GET</code>), và dòng response. Kỳ vọng: <code>200 ran {"id":"42","q":"hi"}</code>. Header <code>x-mw: ran</code> chứng minh route của middleware đã match đúng path như handler — chính là điểm "nhiều handler, nhiều route" từ §2.4.</p>
 </div>
 <hr />
 <h2 id="28-checkpoint">2.8 Checkpoint</h2>
 <ol>
-<li>What is the <em>only</em> job of the <code>Hono</code> class, and which class does the real work?</li>
-<li>Routes are stored in two places. Name both and say which one is used for matching.</li>
-<li>What does the router actually store as its "handler" payload, and why is the <code>Router&lt;T&gt;</code> interface
-   generic?</li>
-<li>Trace <code>app.fetch(req)</code> to the line that calls the router and the line that creates the <code>Context</code>.</li>
-<li>Why does <code>HonoRequest</code> cache the parsed body? What goes wrong without <code>bodyCache</code>?</li>
+<li>Nhiệm vụ <em>duy nhất</em> của class <code>Hono</code> là gì, và class nào mới làm phần việc thật?</li>
+<li>Route được cất ở hai chỗ. Kể tên cả hai và nói cái nào dùng để match.</li>
+<li>Router thật ra cất cái gì làm payload "handler" của nó, và vì sao interface <code>Router&lt;T&gt;</code> lại generic?</li>
+<li>Bám theo <code>app.fetch(req)</code> tới dòng gọi router và dòng tạo <code>Context</code>.</li>
+<li>Vì sao <code>HonoRequest</code> cache body đã parse? Không có <code>bodyCache</code> thì hỏng ở chỗ nào?</li>
 </ol>
 <div class="callout note">
-<p>If #3 is shaky, re-read §2.4. If #5 is shaky, re-read §2.6 (and §0.3).</p>
+<p>Nếu #3 còn lung lay, đọc lại §2.4. Nếu #5 còn lung lay, đọc lại §2.6 (và §0.3).</p>
 </div>
 <hr />
 <h2 class="connect" id="connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</h2>
-<p>In Next.js, "where do my routes live?" has a non-answer: they live in the <em>file system</em>, and the framework
-reconstructs a route table you never see. That implicitness is fine until you're migrating — then you're
-reverse-engineering the framework's conventions to know what actually got registered.</p>
-<p>Hono's <code>app.routes</code> array (<code>src/hono-base.ts:124</code>) is the opposite: an explicit, inspectable list you can
-<code>console.log</code>. When you carry temlet toward Tauri and need to audit exactly which endpoints exist and in
-what order their middleware runs, an explicit route table is gold. And <code>app.request(...)</code> — the
-server-less test entrypoint from §2.5 — means you can unit-test that entire API surface without booting
-Next, Node, <em>or</em> the native shell. That testability is one of the quiet wins of moving the HTTP layer onto
-something runtime-agnostic.</p>
+<p>Trong Next.js, "route của mình sống ở đâu?" có một câu trả lời không-ra-trả-lời: chúng sống trong <em>hệ thống file</em>, và framework tái dựng một bảng route mà bạn không bao giờ thấy. Sự ngầm định đó ổn cho tới khi bạn migrate — lúc ấy bạn phải reverse-engineer các quy ước của framework mới biết được thứ gì thực sự đã được đăng ký.</p>
+<p>Mảng <code>app.routes</code> của Hono (<code>src/hono-base.ts:124</code>) thì ngược lại: một danh sách tường minh, soi được, mà bạn có thể <code>console.log</code>. Khi bạn mang temlet tiến về phía Tauri và cần audit chính xác endpoint nào tồn tại và middleware của chúng chạy theo thứ tự nào, một bảng route tường minh là vàng. Và <code>app.request(...)</code> — cái test entrypoint không-cần-server từ §2.5 — nghĩa là bạn có thể unit-test toàn bộ mặt API đó mà không phải khởi động Next, Node, <em>hay</em> lớp vỏ native. Khả năng test đó là một trong những cái được thầm lặng khi dời tầng HTTP lên một thứ runtime-agnostic.</p>
 <p><strong>Next:</strong> <a href="03-the-router.html">Chapter 3 — The Router ★ →</a></p>
-    <nav class="pager"><a class="prev" href="01-mental-model-and-repo-map.html"><span class="lbl">← Previous</span><span class="ttl">Mental Model &amp; Repo Map</span></a><a class="next" href="03-the-router.html"><span class="lbl">Next →</span><span class="ttl">The Router</span></a></nav>
+    <nav class="pager"><a class="prev" href="01-mental-model-and-repo-map.html"><span class="lbl">← Trước</span><span class="ttl">Mental Model &amp; Repo Map</span></a><a class="next" href="03-the-router.html"><span class="lbl">Tiếp →</span><span class="ttl">The Router</span></a></nav>
   </article></main>
-  <aside class="toc"><nav><h4>On this page</h4>
-<a class="lvl-2" href="#21-why-it-matters">2.1 Why it matters</a>
-<a class="lvl-2" href="#22-two-classes-hono-and-honobase">2.2 Two classes: Hono and HonoBase</a>
-<a class="lvl-2" href="#23-where-routes-live">2.3 Where routes live</a>
-<a class="lvl-2" href="#24-route-registration-what-appget-does">2.4 Route registration: what app.get(...) does</a>
-<a class="lvl-2" href="#25-dispatch-what-fetch-does">2.5 Dispatch: what fetch does</a>
-<a class="lvl-2" href="#26-honorequest-a-wrapper-not-a-replacement">2.6 HonoRequest: a wrapper, not a replacement</a>
-<a class="lvl-2" href="#27-lab-2-registration-and-the-test-entrypoint">2.7 Lab 2 — registration and the test entrypoint</a>
+  <aside class="toc"><nav><h4>Trong trang này</h4>
+<a class="lvl-2" href="#21-vi-sao-quan-trong">2.1 Vì sao quan trọng</a>
+<a class="lvl-2" href="#22-hai-class-hono-va-honobase">2.2 Hai class: Hono và HonoBase</a>
+<a class="lvl-2" href="#23-route-song-o-au">2.3 Route sống ở đâu</a>
+<a class="lvl-2" href="#24-ang-ky-route-appget-lam-gi">2.4 Đăng ký route: app.get(...) làm gì</a>
+<a class="lvl-2" href="#25-dispatch-fetch-lam-gi">2.5 Dispatch: fetch làm gì</a>
+<a class="lvl-2" href="#26-honorequest-mot-wrapper-khong-phai-ban-thay-the">2.6 HonoRequest: một wrapper, không phải bản thay thế</a>
+<a class="lvl-2" href="#27-lab-2-ang-ky-va-test-entrypoint">2.7 Lab 2 — đăng ký và test entrypoint</a>
 <a class="lvl-2" href="#28-checkpoint">2.8 Checkpoint</a>
 <a class="lvl-2" href="#connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</a>
 </nav></aside>
 </div>
 <footer class="site-foot">
   <a class="foot-brand" href="https://rumitx.com" target="_blank" rel="noopener"><span class="foot-x">X</span> RumitX</a>
-  Hono Internals Handbook · grounded in <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
+  Hono Internals Handbook · neo vào <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
   @ <code>v4.12.25</code><br>
-  A <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> publication · Edge AI, human-centric design
+  Một ấn phẩm của <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> · Edge AI, human-centric design
 </footer>
-<script src="assets/app.js"></script>
+<script src="../assets/app.js"></script>
 </body>
 </html>

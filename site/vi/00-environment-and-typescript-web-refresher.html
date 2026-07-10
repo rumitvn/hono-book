@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="vi" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chapter 0 — Environment &amp; TypeScript / Web-standards Refresher · Hono Internals Handbook · RumitX</title>
-<meta name="description" content="A from-the-source handbook on Hono internals — the four-router routing engine and its RegExpRouter one-regex trick, the Context object, the compose middleware onion, multi-runtime adapters, and the type-safe routing &amp; RPC client.">
-<link rel="icon" type="image/svg+xml" href="assets/brand/logo_x.svg">
+<meta name="description" content="Cuốn sách đọc thẳng từ source về internals của Hono — routing engine bốn router và mẹo gộp-một-regex của RegExpRouter, Context object, compose middleware onion, các runtime adapter, và routing type-safe cùng RPC client.">
+<link rel="icon" type="image/svg+xml" href="../assets/brand/logo_x.svg">
 <meta name="author" content="RumitX">
 <meta name="theme-color" content="#0B1E2D">
-<link rel="alternate" hreflang="en" href="00-environment-and-typescript-web-refresher.html">
-<link rel="alternate" hreflang="vi" href="vi/00-environment-and-typescript-web-refresher.html">
-<link rel="alternate" hreflang="x-default" href="00-environment-and-typescript-web-refresher.html">
-<link rel="stylesheet" href="assets/styles.css">
-<link rel="stylesheet" href="assets/code.css">
+<link rel="alternate" hreflang="en" href="../00-environment-and-typescript-web-refresher.html">
+<link rel="alternate" hreflang="vi" href="00-environment-and-typescript-web-refresher.html">
+<link rel="alternate" hreflang="x-default" href="../00-environment-and-typescript-web-refresher.html">
+<link rel="stylesheet" href="../assets/styles.css">
+<link rel="stylesheet" href="../assets/code.css">
 <style>
 .lang-switch{display:inline-flex;align-items:center;gap:.1rem;padding:.15rem;
   border:1px solid var(--border);border-radius:999px;background:var(--surface);
@@ -31,14 +31,14 @@
   <a class="brand" href="index.html"><span class="mark"><span>X</span></span> Hono Internals Handbook</a>
   <span class="spacer"></span>
   <span class="meta-pill">pinned&nbsp;v4.12.25</span>
-  <div class="lang-switch"><span aria-current="true">EN</span><a href="vi/00-environment-and-typescript-web-refresher.html" hreflang="vi">VI</a></div>
+  <div class="lang-switch"><a href="../00-environment-and-typescript-web-refresher.html" hreflang="en">EN</a><span aria-current="true">VI</span></div>
   <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
 </header>
 <div class="backdrop"></div>
 <div class="shell">
   <aside class="rail"><nav>
-<a class="brand-mini" href="index.html"><img src="assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
-<h4>Chapters</h4>
+<a class="brand-mini" href="index.html"><img src="../assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
+<h4>Chương</h4>
 <a class="active" href="00-environment-and-typescript-web-refresher.html"><span class="num">00</span><span>Environment &amp; TypeScript / Web-standards Refresher</span></a>
 <a class="" href="01-mental-model-and-repo-map.html"><span class="num">01</span><span>Mental Model &amp; Repo Map</span></a>
 <a class="" href="02-app-lifecycle-and-request.html"><span class="num">02</span><span>The App Object &amp; HonoRequest</span></a>
@@ -48,33 +48,33 @@
 <a class="" href="06-runtime-adapters-and-portability.html"><span class="num">06</span><span>Runtime Adapters &amp; Portability</span></a>
 <a class="" href="07-typed-routes-rpc-and-validation.html"><span class="num">07</span><span>Typed Routes, the RPC Client &amp; Validation</span></a>
 <a class="" href="08-capstone-extending-and-staying-current.html"><span class="num">08</span><span>Capstone: Extending &amp; Staying Current</span></a>
-<h4>Reference</h4>
+<h4>Tham khảo</h4>
 <a class="" href="glossary.html"><span class="num">§</span><span>Glossary &amp; Index</span></a>
 <a href="https://github.com/rumitvn/hono-book" target="_blank" rel="noopener"><span class="num">↗</span><span>GitHub repo</span></a>
 </nav></aside>
   <main class="content"><article class="article">
-    <div class="crumbs"><a href="index.html">Handbook</a> / Chapter 00</div>
+    <div class="crumbs"><a href="index.html">Handbook</a> / Chương 00</div>
     <h1 id="chapter-0-environment-typescript-web-standards-refresher">Chapter 0 — Environment &amp; TypeScript / Web-standards Refresher</h1>
 <div class="callout goal">
-<p><strong>Goal:</strong> Get a green build of <code>honojs/hono</code> at the pinned ref <strong><code>v4.12.25</code></strong> (commit <code>fce483e</code>), and
-refresh the two pillars the whole framework rests on — the <strong>Fetch API</strong> (<code>Request</code>/<code>Response</code>) and the
-<strong>TypeScript generics &amp; conditional types</strong> that make routes type-safe. By the end you can run a tiny
-Hono app and the upstream test suite locally.</p>
+<p><strong>Goal:</strong> Có được một green build của <code>honojs/hono</code> tại pinned ref <strong><code>v4.12.25</code></strong> (commit <code>fce483e</code>), và
+ôn lại hai trụ cột mà cả framework dựa lên — <strong>Fetch API</strong> (<code>Request</code>/<code>Response</code>) và <strong>TypeScript
+generics &amp; conditional types</strong> làm cho route trở nên type-safe. Hết chương này bạn chạy được một app Hono
+tí hon cùng test suite của upstream ngay trên máy mình.</p>
 </div>
 <hr />
-<h2 id="01-why-it-matters">0.1 Why it matters</h2>
-<p>Most frameworks invent their own request and response objects. Express has <code>req</code>/<code>res</code>. Next.js has
-<code>NextRequest</code>/<code>NextResponse</code>. Each one is a different shape, and porting code between them means rewriting
-the boundary. Hono made the opposite bet: it uses the <strong>web platform's own <code>Request</code> and <code>Response</code></strong> —
-the same objects your browser's <code>fetch()</code> returns, the same objects a Cloudflare Worker's <code>fetch</code> handler
-receives. Nothing proprietary at the edges.</p>
-<p>That single decision is why one <code>app</code> can run on Cloudflare Workers, Bun, Deno, Node, and Lambda without
-changing a line. So before we read a single line of routing code, we need the two things Hono assumes you
-already know: <strong>what <code>Request</code>/<code>Response</code> are</strong>, and <strong>how TypeScript's type-level features let a string
-path become a typed parameter</strong>. If those are fresh, the rest of the book reads easily.</p>
+<h2 id="01-vi-sao-quan-trong">0.1 Vì sao quan trọng</h2>
+<p>Hầu hết framework đều tự bịa ra cặp request và response object của riêng mình. Express thì có <code>req</code>/<code>res</code>.
+Next.js thì có <code>NextRequest</code>/<code>NextResponse</code>. Mỗi bên một hình dạng khác nhau, nên port code qua lại giữa
+chúng đồng nghĩa với viết lại toàn bộ phần ranh giới. Hono đặt cược theo hướng ngược lại: nó dùng thẳng
+<strong><code>Request</code> và <code>Response</code> của chính web platform</strong> — đúng những object mà <code>fetch()</code> trong trình duyệt trả
+về, đúng những object mà <code>fetch</code> handler của một Cloudflare Worker nhận vào. Không có gì độc quyền ở hai đầu.</p>
+<p>Chính quyết định đó là lý do cùng một <code>app</code> chạy được trên Cloudflare Workers, Bun, Deno, Node và Lambda mà
+không phải sửa một dòng. Nên trước khi đọc bất kỳ dòng code routing nào, ta cần hai thứ Hono mặc định bạn đã
+biết sẵn: <strong><code>Request</code>/<code>Response</code> là gì</strong>, và <strong>các tính năng ở tầng type của TypeScript biến một chuỗi path
+thành một tham số có kiểu ra sao</strong>. Nếu hai thứ đó còn tươi trong đầu, phần còn lại của cuốn sách đọc rất nhẹ.</p>
 <hr />
-<h2 id="02-mental-model-a-framework-that-is-just-a-fetch-handler">0.2 Mental model: a framework that is "just" a fetch handler</h2>
-<p>Strip everything away and a Hono app is one function with this shape:</p>
+<h2 id="02-mental-model-mot-framework-chi-la-mot-fetch-handler">0.2 Mental model: một framework "chỉ là" một fetch handler</h2>
+<p>Bóc hết mọi thứ đi thì một app Hono chỉ là một function với đúng hình dạng này:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>        ┌─────────────────────────────────────────────┐
         │   (request: Request) =&gt; Response | Promise   │
         │                                              │
@@ -84,9 +84,9 @@ path become a typed parameter</strong>. If those are fresh, the rest of the book
         └─────────────────────────────────────────────┘
 </code></pre></div></figure>
 
-<p>The runtime (Workers, Bun, …) hands Hono a <code>Request</code> and expects a <code>Response</code> back. Everything Hono
-does — match a route, run middleware, build a body — happens <em>between</em> those two web-standard objects.
-This is exactly the shape a Cloudflare Worker already has:</p>
+<p>Runtime (Workers, Bun, …) trao cho Hono một <code>Request</code> và chờ nhận lại một <code>Response</code>. Mọi thứ Hono làm —
+match một route, chạy middleware, dựng một body — đều diễn ra <em>ở giữa</em> hai object chuẩn web đó. Đây đúng là
+hình dạng mà một Cloudflare Worker vốn đã có sẵn:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="k">default</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="nx">fetch</span><span class="p">(</span><span class="nx">request</span><span class="o">:</span><span class="w"> </span><span class="kt">Request</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">Response</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="nb">Promise</span><span class="o">&lt;</span><span class="nx">Response</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Response</span><span class="p">(</span><span class="s1">&#39;hi&#39;</span><span class="p">)</span>
@@ -94,11 +94,12 @@ This is exactly the shape a Cloudflare Worker already has:</p>
 <span class="p">}</span>
 </code></pre></div></figure>
 
-<p>A Hono <code>app</code> <em>is</em> that <code>fetch</code> function, with a router and middleware bolted on. Hold this picture.</p>
+<p>Một <code>app</code> Hono <em>chính là</em> cái <code>fetch</code> function đó, chỉ gắn thêm một router và middleware lên trên. Giữ lấy
+bức tranh này.</p>
 <hr />
-<h2 id="03-refresher-the-fetch-api-objects">0.3 Refresher: the Fetch API objects</h2>
-<p>These are global in every modern runtime. No import needed.</p>
-<p><strong><code>Request</code></strong> — an immutable view of an incoming HTTP request:</p>
+<h2 id="03-on-nhanh-cac-object-cua-fetch-api">0.3 Ôn nhanh: các object của Fetch API</h2>
+<p>Chúng là global trong mọi runtime hiện đại. Không cần import gì cả.</p>
+<p><strong><code>Request</code></strong> — một view chỉ-đọc, bất biến của một HTTP request đang đến:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="kd">const</span><span class="w"> </span><span class="nx">req</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Request</span><span class="p">(</span><span class="s1">&#39;https://x.dev/users/42?q=hi&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;GET&#39;</span><span class="p">,</span>
 <span class="w">  </span><span class="nx">headers</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s1">&#39;content-type&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;application/json&#39;</span><span class="w"> </span><span class="p">},</span>
@@ -110,69 +111,69 @@ This is exactly the shape a Cloudflare Worker already has:</p>
 </code></pre></div></figure>
 
 <div class="callout warn"><span class="ic">⚠️</span>
-<p> A request/response <strong>body is a one-shot stream</strong>. You can read it <em>once</em>. This is why Hono caches the
-parsed body — you'll see <code>bodyCache</code> in <code>src/request.ts:69</code> in the next chapter. Re-reading a consumed
-body throws.</p>
+<p> Một request/response <strong>body là một stream chỉ đọc được một lần</strong>. Bạn chỉ đọc nó được <em>một lần</em> duy
+nhất. Đây là lý do Hono cache lại body đã parse — bạn sẽ thấy <code>bodyCache</code> ở <code>src/request.ts:69</code> trong
+chương sau. Đọc lại một body đã bị tiêu thụ sẽ ném lỗi.</p>
 </div>
-<p><strong><code>Response</code></strong> — what you send back:</p>
+<p><strong><code>Response</code></strong> — cái bạn gửi trả về:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="ow">new</span><span class="w"> </span><span class="nx">Response</span><span class="p">(</span><span class="s1">&#39;hello&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">status</span><span class="o">:</span><span class="w"> </span><span class="kt">200</span><span class="p">,</span><span class="w"> </span><span class="nx">headers</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="s1">&#39;x-foo&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;bar&#39;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span>
 <span class="nx">Response</span><span class="p">.</span><span class="nx">json</span><span class="p">({</span><span class="w"> </span><span class="nx">ok</span><span class="o">:</span><span class="w"> </span><span class="kt">true</span><span class="w"> </span><span class="p">})</span><span class="w">          </span><span class="c1">// sets content-type for you</span>
 <span class="ow">new</span><span class="w"> </span><span class="nx">Response</span><span class="p">(</span><span class="kc">null</span><span class="p">,</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">status</span><span class="o">:</span><span class="w"> </span><span class="kt">302</span><span class="p">,</span><span class="w"> </span><span class="nx">headers</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">location</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;/&#39;</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">})</span><span class="w">  </span><span class="c1">// redirect</span>
 </code></pre></div></figure>
 
-<p>Hono's <code>c.text()</code>, <code>c.json()</code>, and <code>c.redirect()</code> are thin, ergonomic wrappers that ultimately construct
-one of these. Keep that in mind — when we read <code>context.ts</code>, you'll see there is no magic, just <code>Response</code>
-construction with sensible defaults.</p>
+<p><code>c.text()</code>, <code>c.json()</code> và <code>c.redirect()</code> của Hono là những wrapper mỏng, tiện tay, rốt cuộc chỉ dựng ra một
+trong hai object trên. Nhớ điều đó — khi ta đọc <code>context.ts</code>, bạn sẽ thấy chẳng có phép màu nào, chỉ là việc
+dựng một <code>Response</code> với vài default hợp lý.</p>
 <hr />
-<h2 id="04-refresher-the-typescript-features-hono-leans-on">0.4 Refresher: the TypeScript features Hono leans on</h2>
-<p>Hono's headline feature is <em>type-safe routing</em>: write <code>/users/:id</code> and <code>c.req.param('id')</code> is typed as a
-string with no annotation. That is built entirely from three TypeScript features. You don't need to master
-them, but you should recognize them when Chapter 7 cites <code>src/types.ts</code>.</p>
-<p><strong>1. Generics carry type information through a call.</strong></p>
+<h2 id="04-on-nhanh-nhung-tinh-nang-typescript-ma-hono-dua-vao">0.4 Ôn nhanh: những tính năng TypeScript mà Hono dựa vào</h2>
+<p>Tính năng đinh của Hono là <em>type-safe routing</em>: bạn viết <code>/users/:id</code> thì <code>c.req.param('id')</code> tự có kiểu
+string mà chẳng cần annotation nào. Toàn bộ chuyện đó dựng nên từ đúng ba tính năng của TypeScript. Bạn không
+cần thành thạo chúng, nhưng nên nhận ra chúng khi Chapter 7 trích <code>src/types.ts</code>.</p>
+<p><strong>1. Generics chuyển thông tin kiểu xuyên qua một lời gọi.</strong></p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="kd">function</span><span class="w"> </span><span class="nx">first</span><span class="o">&lt;</span><span class="nx">T</span><span class="o">&gt;</span><span class="p">(</span><span class="nx">arr</span><span class="o">:</span><span class="w"> </span><span class="kt">T</span><span class="p">[])</span><span class="o">:</span><span class="w"> </span><span class="nx">T</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">arr</span><span class="p">[</span><span class="mf">0</span><span class="p">]</span><span class="w"> </span><span class="p">}</span>
 <span class="nx">first</span><span class="p">([</span><span class="mf">1</span><span class="p">,</span><span class="w"> </span><span class="mf">2</span><span class="p">,</span><span class="w"> </span><span class="mf">3</span><span class="p">])</span><span class="w">         </span><span class="c1">// T inferred as number → returns number</span>
 </code></pre></div></figure>
 
-<p>The <code>Hono</code> class is generic: <code>class Hono&lt;E extends Env, S extends Schema, BasePath extends string&gt;</code>
-(<code>src/hono.ts:16</code>). The <code>S</code> type parameter is the <em>accumulated route schema</em> — every <code>.get()</code> call returns
-a new <code>Hono</code> with <code>S</code> widened to include that route. That's how the <code>hc</code> client later knows your routes.</p>
-<p><strong>2. Template-literal types let the compiler read a string.</strong></p>
+<p>Class <code>Hono</code> là generic: <code>class Hono&lt;E extends Env, S extends Schema, BasePath extends string&gt;</code>
+(<code>src/hono.ts:16</code>). Type parameter <code>S</code> chính là <em>route schema được tích luỹ dần</em> — mỗi lời gọi <code>.get()</code> trả
+về một <code>Hono</code> mới với <code>S</code> được nới rộng ra để bao thêm route đó. Đó là cách mà client <code>hc</code> sau này biết được
+các route của bạn.</p>
+<p><strong>2. Template-literal type cho phép compiler đọc được một chuỗi.</strong></p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="kr">type</span><span class="w"> </span><span class="nx">Greeting</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="sb">`hello </span><span class="si">${</span><span class="kt">string</span><span class="si">}</span><span class="sb">`</span><span class="w">     </span><span class="c1">// matches &quot;hello world&quot;, not &quot;hi&quot;</span>
 </code></pre></div></figure>
 
-<p>Hono uses these to parse a path <em>at the type level</em>. <code>ParamKeys&lt;'/users/:id'&gt;</code> evaluates to <code>'id'</code>
-(<code>src/types.ts:2706</code>). The compiler literally splits the path string on <code>/</code> and extracts the <code>:</code>-prefixed
-segments.</p>
-<p><strong>3. Conditional types branch on a type.</strong></p>
+<p>Hono dùng chúng để parse một path <em>ngay ở tầng type</em>. <code>ParamKeys&lt;'/users/:id'&gt;</code> cho ra <code>'id'</code>
+(<code>src/types.ts:2706</code>). Compiler theo đúng nghĩa đen cắt chuỗi path tại dấu <code>/</code> rồi rút ra những segment có
+tiền tố <code>:</code>.</p>
+<p><strong>3. Conditional type rẽ nhánh dựa trên một kiểu.</strong></p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="kr">type</span><span class="w"> </span><span class="nx">IsString</span><span class="o">&lt;</span><span class="nx">T</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">T</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="kt">string</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="s1">&#39;yes&#39;</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;no&#39;</span>
 </code></pre></div></figure>
 
-<p><code>ParamKey</code> (<code>src/types.ts</code> near 2698) uses exactly this pattern — <code>Component extends</code>:${infer Name}<code>?
-Name : never</code> — to pull the name out of a <code>:param</code> segment. The <code>infer</code> keyword captures the matched piece.</p>
+<p><code>ParamKey</code> (<code>src/types.ts</code> gần dòng 2698) dùng đúng mẫu này — <code>Component extends</code>:${infer Name}<code>? Name : never</code> — để moi cái tên ra khỏi một segment <code>:param</code>. Từ khoá <code>infer</code> bắt lấy đoạn khớp được.</p>
 <div class="callout note"><span class="ic">🧠</span>
-<p> <strong>Mental model:</strong> Hono's type safety is a tiny compile-time interpreter that runs over your path
-strings. It costs zero bytes at runtime — it's all erased. We'll read the real definitions in Chapter 7;
-for now, just know these three features are the whole toolkit.</p>
+<p> <strong>Mental model:</strong> Type safety của Hono là một trình thông dịch tí hon chạy lúc compile-time, quét qua
+các chuỗi path của bạn. Nó tốn zero byte lúc runtime — bị xoá sạch hết. Ta sẽ đọc các định nghĩa thật ở
+Chapter 7; còn giờ, chỉ cần biết ba tính năng này là toàn bộ bộ đồ nghề.</p>
 </div>
 <hr />
-<h2 id="05-the-public-surface">0.5 The public surface</h2>
-<p>Open <code>src/index.ts</code> (53 lines). This is everything <code>import … from 'hono'</code> gives you:</p>
+<h2 id="05-be-mat-public">0.5 Bề mặt public</h2>
+<p>Mở <code>src/index.ts</code> (53 dòng). Đây là toàn bộ những gì <code>import … from 'hono'</code> trao cho bạn:</p>
 <ul>
-<li><code>src/index.ts:17</code> — <code>import { Hono } from './hono'</code>, re-exported at <code>:53</code>. The class is the whole runtime API.</li>
-<li><code>src/index.ts:22-34</code> — the public <strong>types</strong>: <code>Env</code>, <code>Handler</code>, <code>MiddlewareHandler</code>, <code>Next</code>, <code>Input</code>,
-  <code>Schema</code>, <code>ToSchema</code>, <code>TypedResponse</code>. These are the type-level vocabulary of the framework.</li>
-<li><code>src/index.ts:39</code> — <code>export { Context } from './context'</code> — the <code>c</code> object's class.</li>
-<li><code>src/index.ts:44</code> — <code>HonoRequest</code> (type only).</li>
+<li><code>src/index.ts:17</code> — <code>import { Hono } from './hono'</code>, được re-export ở <code>:53</code>. Class này chính là toàn bộ runtime API.</li>
+<li><code>src/index.ts:22-34</code> — các <strong>type</strong> public: <code>Env</code>, <code>Handler</code>, <code>MiddlewareHandler</code>, <code>Next</code>, <code>Input</code>,
+  <code>Schema</code>, <code>ToSchema</code>, <code>TypedResponse</code>. Đây là bộ từ vựng ở tầng type của framework.</li>
+<li><code>src/index.ts:39</code> — <code>export { Context } from './context'</code> — class của object <code>c</code>.</li>
+<li><code>src/index.ts:44</code> — <code>HonoRequest</code> (chỉ có type).</li>
 </ul>
 <div class="callout info"><span class="ic">📁</span>
-<p> Note how small this is. Middleware (<code>hono/cors</code>), adapters (<code>hono/cloudflare-workers</code>), the client
-(<code>hono/client</code>), and JSX (<code>hono/jsx</code>) are <strong>separate entry points</strong>, not bundled into the core. That
-keeps the base import tiny — a deliberate edge-size optimization we'll revisit in Chapter 6.</p>
+<p> Để ý xem nó nhỏ cỡ nào. Middleware (<code>hono/cors</code>), adapter (<code>hono/cloudflare-workers</code>), client
+(<code>hono/client</code>) và JSX (<code>hono/jsx</code>) đều là <strong>các entry point riêng biệt</strong>, không gói vào core. Nhờ vậy
+phần import cơ sở giữ được cực gọn — một tối ưu về kích thước ở edge có chủ đích mà ta sẽ quay lại ở Chapter 6.</p>
 </div>
 <hr />
-<h2 id="06-lab-0-green-build-first-app">0.6 Lab 0 — green build + first app</h2>
-<p>The upstream repo uses <strong>Bun</strong> as its primary toolchain (see <code>.tool-versions</code>: <code>bun 1.2.19</code>, <code>nodejs
-24.7.0</code>, <code>deno 2.4.5</code>). Install Bun if you don't have it (<code>curl -fsSL https://bun.sh/install | bash</code>), then:</p>
+<h2 id="06-lab-0-green-build-app-au-tien">0.6 Lab 0 — green build + app đầu tiên</h2>
+<p>Repo upstream dùng <strong>Bun</strong> làm toolchain chính (xem <code>.tool-versions</code>: <code>bun 1.2.19</code>, <code>nodejs
+24.7.0</code>, <code>deno 2.4.5</code>). Cài Bun nếu bạn chưa có (<code>curl -fsSL https://bun.sh/install | bash</code>), rồi:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">bash</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1"># 1. Confirm the pin (read-only clone lives beside the book)</span>
 <span class="nb">cd</span><span class="w"> </span>../hono
 git<span class="w"> </span>log<span class="w"> </span>-1<span class="w"> </span>--format<span class="o">=</span><span class="s1">&#39;%h %d&#39;</span><span class="w">        </span><span class="c1"># expect: fce483e (tag: v4.12.25)</span>
@@ -182,8 +183,8 @@ bun<span class="w"> </span>install
 bun<span class="w"> </span>run<span class="w"> </span><span class="nb">test</span><span class="w">                        </span><span class="c1"># = tsc --noEmit &amp;&amp; vitest --run</span>
 </code></pre></div></figure>
 
-<p>Then build the smallest possible app <em>outside</em> the clone (so you never mutate it) — this is the
-<code>hono-hello</code> artifact you'll reuse in later labs:</p>
+<p>Rồi build một app nhỏ nhất có thể <em>bên ngoài</em> clone (để không bao giờ đụng vào nó) — đây là artifact
+<code>hono-hello</code> mà bạn sẽ tái dùng ở các lab sau:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">bash</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>~/hono-hello<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>~/hono-hello
 bun<span class="w"> </span>init<span class="w"> </span>-y
 bun<span class="w"> </span>add<span class="w"> </span>hono
@@ -206,56 +207,57 @@ curl<span class="w"> </span>localhost:3000/users/42
 </code></pre></div></figure>
 
 <div class="callout lab"><span class="ic">🧪</span>
-<p> <strong>Save your numbers</strong> in <code>labs/lab0-setup.md</code>: your Bun version, whether <code>bun run test</code> is green, and
-the two <code>curl</code> outputs. You should see <code>Hono!</code> and <code>{"id":"42"}</code>. Note that <code>:id</code> arrived as a <strong>string</strong> —
-that's the typed param from §0.4 in action.</p>
-<p>💡 <strong>Tip:</strong> <code>vitest --run</code> is fast because Hono is pure TypeScript with no native build step. Compare
-that to the C/C++/Rust books in this series, where "get a green build" meant a compiler toolchain. Here
-the whole framework is source you can read top to bottom in an afternoon.</p>
+<p> <strong>Lưu lại các con số của bạn</strong> vào <code>labs/lab0-setup.md</code>: phiên bản Bun, <code>bun run test</code> có green không,
+và output của hai lệnh <code>curl</code>. Bạn phải thấy <code>Hono!</code> và <code>{"id":"42"}</code>. Để ý <code>:id</code> về dưới dạng một
+<strong>string</strong> — đó chính là typed param từ §0.4 đang hoạt động.</p>
+<p>💡 <strong>Tip:</strong> <code>vitest --run</code> chạy nhanh vì Hono thuần TypeScript, không có bước native build nào. So với mấy
+cuốn C/C++/Rust trong series này, nơi "có được một green build" nghĩa là cả một compiler toolchain. Ở đây
+cả framework là source bạn đọc từ đầu đến cuối gọn trong một buổi chiều.</p>
 </div>
 <hr />
 <h2 id="07-checkpoint">0.7 Checkpoint</h2>
 <ol>
-<li>What two web-standard objects sit at Hono's input and output boundary, and why does using them make the
-   framework portable?</li>
-<li>Why must Hono cache a parsed request body instead of re-reading it?</li>
-<li>What does <code>ParamKeys&lt;'/posts/:slug'&gt;</code> evaluate to, and which TypeScript feature makes that possible?</li>
-<li>Is <code>hono/cors</code> part of the core <code>hono</code> import? Where do middleware and adapters live?</li>
-<li>When you hit <code>/users/42</code>, what is the runtime <em>type</em> of <code>c.req.param('id')</code>, and where did that type come from?</li>
+<li>Hai object chuẩn web nào nằm ở ranh giới input và output của Hono, và vì sao dùng chúng lại khiến framework
+   trở nên portable?</li>
+<li>Vì sao Hono buộc phải cache một request body đã parse thay vì đọc lại nó?</li>
+<li><code>ParamKeys&lt;'/posts/:slug'&gt;</code> cho ra kết quả gì, và tính năng TypeScript nào làm được điều đó?</li>
+<li><code>hono/cors</code> có nằm trong phần import <code>hono</code> lõi không? Middleware và adapter sống ở đâu?</li>
+<li>Khi bạn gọi <code>/users/42</code>, <em>kiểu</em> lúc runtime của <code>c.req.param('id')</code> là gì, và cái kiểu đó đến từ đâu?</li>
 </ol>
 <div class="callout note">
-<p>If #3 or #5 is shaky, re-read §0.4. If #1–#2 are shaky, re-read §0.3.</p>
+<p>Nếu #3 hoặc #5 còn lung lay, đọc lại §0.4. Nếu #1–#2 còn lung lay, đọc lại §0.3.</p>
 </div>
 <hr />
 <h2 class="connect" id="connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</h2>
-<p>You've lived the pain this chapter's "one bet" avoids. In <strong>temlet</strong> on Next.js, your API logic is married
-to <code>NextRequest</code>/<code>NextResponse</code> and the Node/Edge runtime split. The moment you carry temlet toward
-<strong>Tauri</strong>, that Node server isn't there anymore — and anything bound to Next's request objects has to be
-rewritten for the native side.</p>
-<p>Hono's bet is the escape hatch: because it speaks only <code>Request</code>/<code>Response</code>, the <em>same</em> router and handlers
-run inside a Worker, a Bun server, or a sidecar process behind a Tauri shell. As you read this book, keep
-asking: <em>which of my temlet API handlers could become runtime-agnostic Hono handlers?</em> The web→native
-migration gets dramatically cheaper when your HTTP layer stops caring what's underneath it.</p>
+<p>Bạn đã sống qua đúng nỗi đau mà "canh bạc lớn" của chương này né được. Trong <strong>temlet</strong> trên Next.js, logic
+API của bạn bị cưới chặt vào <code>NextRequest</code>/<code>NextResponse</code> cùng cái ranh giới runtime Node/Edge. Ngay khoảnh
+khắc bạn mang temlet tiến về phía <strong>Tauri</strong>, cái Node server đó không còn ở đó nữa — và bất cứ thứ gì buộc
+vào các request object của Next đều phải viết lại cho phía native.</p>
+<p>Canh bạc của Hono chính là lối thoát: vì nó chỉ nói bằng <code>Request</code>/<code>Response</code>, nên <em>cùng một</em> router và các
+handler chạy được bên trong một Worker, một Bun server, hay một tiến trình sidecar nấp sau lớp vỏ Tauri. Khi
+đọc cuốn sách này, cứ tự hỏi hoài: <em>những API handler nào trong temlet của mình có thể biến thành các Hono
+handler runtime-agnostic?</em> Cuộc di cư web→native rẻ đi thấy rõ khi lớp HTTP của bạn không còn quan tâm bên
+dưới nó là gì nữa.</p>
 <p><strong>Next:</strong> <a href="01-mental-model-and-repo-map.html">Chapter 1 — Mental Model &amp; Repo Map →</a></p>
-    <nav class="pager"><a class="prev" href="index.html"><span class="lbl">← Previous</span><span class="ttl">Handbook</span></a><a class="next" href="01-mental-model-and-repo-map.html"><span class="lbl">Next →</span><span class="ttl">Mental Model &amp; Repo Map</span></a></nav>
+    <nav class="pager"><a class="prev" href="index.html"><span class="lbl">← Trước</span><span class="ttl">Handbook</span></a><a class="next" href="01-mental-model-and-repo-map.html"><span class="lbl">Tiếp →</span><span class="ttl">Mental Model &amp; Repo Map</span></a></nav>
   </article></main>
-  <aside class="toc"><nav><h4>On this page</h4>
-<a class="lvl-2" href="#01-why-it-matters">0.1 Why it matters</a>
-<a class="lvl-2" href="#02-mental-model-a-framework-that-is-just-a-fetch-handler">0.2 Mental model: a framework that is &quot;just&quot; a fetch handler</a>
-<a class="lvl-2" href="#03-refresher-the-fetch-api-objects">0.3 Refresher: the Fetch API objects</a>
-<a class="lvl-2" href="#04-refresher-the-typescript-features-hono-leans-on">0.4 Refresher: the TypeScript features Hono leans on</a>
-<a class="lvl-2" href="#05-the-public-surface">0.5 The public surface</a>
-<a class="lvl-2" href="#06-lab-0-green-build-first-app">0.6 Lab 0 — green build + first app</a>
+  <aside class="toc"><nav><h4>Trong trang này</h4>
+<a class="lvl-2" href="#01-vi-sao-quan-trong">0.1 Vì sao quan trọng</a>
+<a class="lvl-2" href="#02-mental-model-mot-framework-chi-la-mot-fetch-handler">0.2 Mental model: một framework &quot;chỉ là&quot; một fetch handler</a>
+<a class="lvl-2" href="#03-on-nhanh-cac-object-cua-fetch-api">0.3 Ôn nhanh: các object của Fetch API</a>
+<a class="lvl-2" href="#04-on-nhanh-nhung-tinh-nang-typescript-ma-hono-dua-vao">0.4 Ôn nhanh: những tính năng TypeScript mà Hono dựa vào</a>
+<a class="lvl-2" href="#05-be-mat-public">0.5 Bề mặt public</a>
+<a class="lvl-2" href="#06-lab-0-green-build-app-au-tien">0.6 Lab 0 — green build + app đầu tiên</a>
 <a class="lvl-2" href="#07-checkpoint">0.7 Checkpoint</a>
 <a class="lvl-2" href="#connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</a>
 </nav></aside>
 </div>
 <footer class="site-foot">
   <a class="foot-brand" href="https://rumitx.com" target="_blank" rel="noopener"><span class="foot-x">X</span> RumitX</a>
-  Hono Internals Handbook · grounded in <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
+  Hono Internals Handbook · neo vào <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
   @ <code>v4.12.25</code><br>
-  A <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> publication · Edge AI, human-centric design
+  Một ấn phẩm của <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> · Edge AI, human-centric design
 </footer>
-<script src="assets/app.js"></script>
+<script src="../assets/app.js"></script>
 </body>
 </html>

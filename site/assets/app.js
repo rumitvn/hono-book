@@ -1,4 +1,4 @@
-// Edge Inference Handbook — interactions (no dependencies)
+// Hono Internals Handbook — interactions (no dependencies)
 (function () {
   'use strict';
 

@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="vi" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chapter 5 — The Middleware Onion · Hono Internals Handbook · RumitX</title>
-<meta name="description" content="A from-the-source handbook on Hono internals — the four-router routing engine and its RegExpRouter one-regex trick, the Context object, the compose middleware onion, multi-runtime adapters, and the type-safe routing &amp; RPC client.">
-<link rel="icon" type="image/svg+xml" href="assets/brand/logo_x.svg">
+<meta name="description" content="Cuốn sách đọc thẳng từ source về internals của Hono — routing engine bốn router và mẹo gộp-một-regex của RegExpRouter, Context object, compose middleware onion, các runtime adapter, và routing type-safe cùng RPC client.">
+<link rel="icon" type="image/svg+xml" href="../assets/brand/logo_x.svg">
 <meta name="author" content="RumitX">
 <meta name="theme-color" content="#0B1E2D">
-<link rel="alternate" hreflang="en" href="05-the-middleware-onion.html">
-<link rel="alternate" hreflang="vi" href="vi/05-the-middleware-onion.html">
-<link rel="alternate" hreflang="x-default" href="05-the-middleware-onion.html">
-<link rel="stylesheet" href="assets/styles.css">
-<link rel="stylesheet" href="assets/code.css">
+<link rel="alternate" hreflang="en" href="../05-the-middleware-onion.html">
+<link rel="alternate" hreflang="vi" href="05-the-middleware-onion.html">
+<link rel="alternate" hreflang="x-default" href="../05-the-middleware-onion.html">
+<link rel="stylesheet" href="../assets/styles.css">
+<link rel="stylesheet" href="../assets/code.css">
 <style>
 .lang-switch{display:inline-flex;align-items:center;gap:.1rem;padding:.15rem;
   border:1px solid var(--border);border-radius:999px;background:var(--surface);
@@ -31,14 +31,14 @@
   <a class="brand" href="index.html"><span class="mark"><span>X</span></span> Hono Internals Handbook</a>
   <span class="spacer"></span>
   <span class="meta-pill">pinned&nbsp;v4.12.25</span>
-  <div class="lang-switch"><span aria-current="true">EN</span><a href="vi/05-the-middleware-onion.html" hreflang="vi">VI</a></div>
+  <div class="lang-switch"><a href="../05-the-middleware-onion.html" hreflang="en">EN</a><span aria-current="true">VI</span></div>
   <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
 </header>
 <div class="backdrop"></div>
 <div class="shell">
   <aside class="rail"><nav>
-<a class="brand-mini" href="index.html"><img src="assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
-<h4>Chapters</h4>
+<a class="brand-mini" href="index.html"><img src="../assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
+<h4>Chương</h4>
 <a class="" href="00-environment-and-typescript-web-refresher.html"><span class="num">00</span><span>Environment &amp; TypeScript / Web-standards Refresher</span></a>
 <a class="" href="01-mental-model-and-repo-map.html"><span class="num">01</span><span>Mental Model &amp; Repo Map</span></a>
 <a class="" href="02-app-lifecycle-and-request.html"><span class="num">02</span><span>The App Object &amp; HonoRequest</span></a>
@@ -48,29 +48,29 @@
 <a class="" href="06-runtime-adapters-and-portability.html"><span class="num">06</span><span>Runtime Adapters &amp; Portability</span></a>
 <a class="" href="07-typed-routes-rpc-and-validation.html"><span class="num">07</span><span>Typed Routes, the RPC Client &amp; Validation</span></a>
 <a class="" href="08-capstone-extending-and-staying-current.html"><span class="num">08</span><span>Capstone: Extending &amp; Staying Current</span></a>
-<h4>Reference</h4>
+<h4>Tham khảo</h4>
 <a class="" href="glossary.html"><span class="num">§</span><span>Glossary &amp; Index</span></a>
 <a href="https://github.com/rumitvn/hono-book" target="_blank" rel="noopener"><span class="num">↗</span><span>GitHub repo</span></a>
 </nav></aside>
   <main class="content"><article class="article">
-    <div class="crumbs"><a href="index.html">Handbook</a> / Chapter 05</div>
+    <div class="crumbs"><a href="index.html">Handbook</a> / Chương 05</div>
     <h1 id="chapter-5-the-middleware-onion">Chapter 5 — The Middleware Onion</h1>
 <div class="callout goal">
-<p><strong>Goal:</strong> Read <code>src/compose.ts</code> end to end and understand the middleware "onion" precisely — how <code>await
-next()</code> builds the layered structure, why ordering works the way it does, and exactly where errors and
-404s are caught. After this chapter you can predict the run order of any middleware stack. Grounded in
-<code>honojs/hono</code> at <strong><code>v4.12.25</code></strong> (<code>fce483e</code>).</p>
+<p><strong>Goal:</strong> Đọc trọn <code>src/compose.ts</code> từ đầu tới cuối và hiểu thật chính xác cái "onion" của middleware — <code>await
+next()</code> dựng nên cấu trúc phân lớp thế nào, vì sao thứ tự chạy lại đúng như vậy, và error cùng 404 bị bắt
+chính xác ở đâu. Sau chương này bạn dự đoán được thứ tự chạy của bất kỳ stack middleware nào. Grounded trong
+<code>honojs/hono</code> tại <strong><code>v4.12.25</code></strong> (<code>fce483e</code>).</p>
 </div>
 <hr />
-<h2 id="51-why-it-matters">5.1 Why it matters</h2>
-<p>Middleware is where most real framework bugs live: "why did this run before that?", "why didn't my error
-handler fire?", "why is the response empty?". Almost all of these are misunderstandings of the <em>onion</em> —
-the fact that each middleware runs in two phases, before and after <code>next()</code>, wrapped around the inner
-layers. The remarkable thing about Hono is that the entire mechanism is <strong>one 73-line file</strong> with no
-hidden state. If you can read <code>compose.ts</code>, you can answer every middleware question definitively.</p>
+<h2 id="51-vi-sao-quan-trong">5.1 Vì sao quan trọng</h2>
+<p>Middleware là nơi phần lớn bug framework thật sự trú ngụ: "sao cái này chạy trước cái kia?", "sao error handler
+của tôi không kích hoạt?", "sao response lại rỗng?". Gần như tất cả đều là hiểu nhầm về cái <em>onion</em> — sự thật
+rằng mỗi middleware chạy làm hai pha, trước và sau <code>next()</code>, bọc quanh các lớp bên trong. Điều đáng nể ở Hono là
+toàn bộ cơ chế nằm gọn trong <strong>một file 73 dòng</strong>, không có state ẩn nào cả. Đọc được <code>compose.ts</code> là bạn trả lời
+dứt điểm được mọi câu hỏi về middleware.</p>
 <hr />
 <h2 id="52-mental-model-the-onion">5.2 Mental model: the onion</h2>
-<p>Given <code>app.use(A); app.use(B); app.get('/', H)</code>, the runtime structure is:</p>
+<p>Cho <code>app.use(A); app.use(B); app.get('/', H)</code>, cấu trúc lúc runtime là:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>        request ──►┌─────────────── A ───────────────┐
                    │  A: before next()                │
                    │   ┌──────────── B ─────────────┐ │
@@ -85,13 +85,13 @@ hidden state. If you can read <code>compose.ts</code>, you can answer every midd
         response ◄─└───────────────────────────────────┘
 </code></pre></div></figure>
 
-<p>Code <em>before</em> <code>await next()</code> runs on the way <strong>in</strong> (outer→inner). Code <em>after</em> <code>await next()</code> runs on the
-way <strong>out</strong> (inner→outer). The handler <code>H</code> is the core of the onion. This is the koa model, and <code>compose.ts</code>
-implements it in the most literal possible way.</p>
+<p>Code <em>trước</em> <code>await next()</code> chạy trên đường đi <strong>vào</strong> (outer→inner). Code <em>sau</em> <code>await next()</code> chạy trên đường
+đi <strong>ra</strong> (inner→outer). Handler <code>H</code> là lõi của onion. Đây chính là mô hình koa, và <code>compose.ts</code> hiện thực nó theo
+cách sát nghĩa đen nhất có thể.</p>
 <hr />
-<h2 id="53-the-whole-algorithm-read-line-by-line">5.3 The whole algorithm, read line by line</h2>
-<p><code>compose</code> (<code>src/compose.ts:15</code>) takes the matched handler list and returns a function. The magic is the
-nested recursive <code>dispatch</code> (<code>src/compose.ts:32</code>). Read it once, slowly:</p>
+<h2 id="53-toan-bo-thuat-toan-oc-tung-dong">5.3 Toàn bộ thuật toán, đọc từng dòng</h2>
+<p><code>compose</code> (<code>src/compose.ts:15</code>) nhận danh sách handler đã match và trả về một function. Phép màu nằm ở hàm đệ quy
+lồng nhau <code>dispatch</code> (<code>src/compose.ts:32</code>). Đọc nó một lần, thật chậm:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">compose</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">middleware</span><span class="p">,</span><span class="w"> </span><span class="nx">onError</span><span class="o">?</span><span class="p">,</span><span class="w"> </span><span class="nx">onNotFound</span><span class="o">?</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="p">(</span><span class="nx">context</span><span class="p">,</span><span class="w"> </span><span class="nx">next</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="kd">let</span><span class="w"> </span><span class="nx">index</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="o">-</span><span class="mf">1</span>
@@ -134,58 +134,58 @@ nested recursive <code>dispatch</code> (<code>src/compose.ts:32</code>). Read it
 <span class="p">}</span>
 </code></pre></div></figure>
 
-<h3 id="the-one-line-that-builds-the-onion">The one line that builds the onion</h3>
-<p>Everything hinges on <code>src/compose.ts:51</code>:</p>
+<h3 id="ung-mot-dong-dung-nen-cai-onion">Đúng một dòng dựng nên cái onion</h3>
+<p>Mọi thứ xoay quanh <code>src/compose.ts:51</code>:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="nx">res</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="nx">handler</span><span class="p">(</span><span class="nx">context</span><span class="p">,</span><span class="w"> </span><span class="p">()</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="nx">dispatch</span><span class="p">(</span><span class="nx">i</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="mf">1</span><span class="p">))</span>
 </code></pre></div></figure>
 
-<p>The handler is given a <code>next</code> function that is <em>literally</em> <code>() =&gt; dispatch(i + 1)</code> — "run the next layer."
-When your middleware calls <code>await next()</code>, it <strong>pauses inside its own function body</strong> and runs the entire
-rest of the onion (all deeper layers, including the handler) to completion. Only when that returns does
-your code after <code>await next()</code> resume. That's the whole onion: it's just a recursive call you <code>await</code> in
-the middle of a function.</p>
+<p>Handler được trao cho một hàm <code>next</code> mà <em>đúng theo nghĩa đen</em> là <code>() =&gt; dispatch(i + 1)</code> — "chạy lớp kế tiếp".
+Khi middleware của bạn gọi <code>await next()</code>, nó <strong>tạm dừng ngay bên trong thân hàm của chính nó</strong> và chạy toàn bộ
+phần còn lại của onion (mọi lớp sâu hơn, kể cả handler) cho tới khi xong. Chỉ khi phần đó trả về thì đoạn code sau
+<code>await next()</code> của bạn mới chạy tiếp. Đó là toàn bộ cái onion: nó chỉ là một lời gọi đệ quy mà bạn <code>await</code> ở giữa
+một hàm.</p>
 <h3 id="the-guard">The guard</h3>
-<p><code>src/compose.ts:33</code> — <code>if (i &lt;= index) throw 'next() called multiple times'</code>. Each layer may descend
-<em>once</em>. Calling <code>next()</code> twice in one middleware would re-enter a layer that already ran, so it throws.
-<code>index</code> is a monotonic high-water mark.</p>
-<h3 id="reaching-the-end">Reaching the end</h3>
-<p>When <code>i</code> runs past the registered middleware (<code>src/compose.ts:46</code>), <code>handler</code> becomes the optional outer
-<code>next</code> (for nested composition) or <code>undefined</code>. If it's <code>undefined</code> and nothing has produced a response
-(<code>src/compose.ts:62</code>), <code>onNotFound</code> runs — that's how an unmatched route yields a 404.</p>
+<p><code>src/compose.ts:33</code> — <code>if (i &lt;= index) throw 'next() called multiple times'</code>. Mỗi lớp chỉ được đi xuống <em>một lần</em>.
+Gọi <code>next()</code> hai lần trong cùng một middleware sẽ vào lại một lớp đã chạy rồi, nên nó throw. <code>index</code> là một mốc
+cao-nhất tăng đơn điệu (monotonic high-water mark).</p>
+<h3 id="cham-toi-iem-cuoi">Chạm tới điểm cuối</h3>
+<p>Khi <code>i</code> vượt quá số middleware đã đăng ký (<code>src/compose.ts:46</code>), <code>handler</code> trở thành <code>next</code> bên ngoài tuỳ chọn (cho
+trường hợp compose lồng nhau) hoặc <code>undefined</code>. Nếu nó là <code>undefined</code> và chưa có gì tạo ra response
+(<code>src/compose.ts:62</code>), thì <code>onNotFound</code> chạy — đó là cách một route không match sinh ra một 404.</p>
 <hr />
-<h2 id="54-errors-and-404s-where-theyre-caught">5.4 Errors and 404s: where they're caught</h2>
-<p>This is the part everyone gets wrong, so be precise:</p>
+<h2 id="54-error-va-404-bi-bat-o-au">5.4 Error và 404: bị bắt ở đâu</h2>
+<p>Đây là phần ai cũng hiểu sai, nên phải nói cho chính xác:</p>
 <ul>
-<li><strong>Errors</strong> (<code>src/compose.ts:52</code>): the <code>try/catch</code> wraps the <code>await handler(...)</code> call. Because <code>next()</code>
-  is <code>dispatch(i+1)</code> and you <code>await</code> it, <strong>a throw deep in the onion propagates up through every awaiting
-  layer</strong> — and is caught at the <em>first</em> layer that's inside this try. The <code>onError</code> handler
-  (<code>src/compose.ts:55</code>) runs, sets <code>context.error</code>, and its return becomes the response. A non-<code>Error</code>
-  throw, or no <code>onError</code>, re-throws (<code>src/compose.ts:58</code>).</li>
-<li><strong>404s</strong> (<code>src/compose.ts:62</code>): only when no handler matched <em>and</em> nothing finalized a response.</li>
+<li><strong>Error</strong> (<code>src/compose.ts:52</code>): khối <code>try/catch</code> bọc quanh lời gọi <code>await handler(...)</code>. Vì <code>next()</code> chính là
+  <code>dispatch(i+1)</code> và bạn <code>await</code> nó, nên <strong>một throw sâu trong onion sẽ lan ngược lên qua mọi lớp đang await</strong> — và
+  bị bắt tại lớp <em>đầu tiên</em> nằm trong khối try này. Handler <code>onError</code> (<code>src/compose.ts:55</code>) chạy, gán <code>context.error</code>,
+  và giá trị trả về của nó trở thành response. Một throw không phải <code>Error</code>, hoặc khi không có <code>onError</code>, sẽ được
+  re-throw (<code>src/compose.ts:58</code>).</li>
+<li><strong>404</strong> (<code>src/compose.ts:62</code>): chỉ khi không handler nào match <em>và</em> không có gì đã finalize một response.</li>
 </ul>
-<p>Recall where <code>onError</code> and <code>onNotFound</code> come from: <code>#dispatch</code> passes <code>this.errorHandler</code> and
-<code>this.#notFoundHandler</code> into <code>compose</code> (<code>src/hono-base.ts:450</code>), and those default to the handlers at
-<code>src/hono-base.ts:31</code> (404) and <code>src/hono-base.ts:35</code> (error). You override them with <code>app.onError(...)</code>
-(<code>src/hono-base.ts:271</code>) and <code>app.notFound(...)</code> (<code>src/hono-base.ts:291</code>).</p>
+<p>Nhớ lại <code>onError</code> và <code>onNotFound</code> đến từ đâu: <code>#dispatch</code> truyền <code>this.errorHandler</code> và <code>this.#notFoundHandler</code> vào
+<code>compose</code> (<code>src/hono-base.ts:450</code>), và hai cái đó mặc định là các handler ở <code>src/hono-base.ts:31</code> (404) và
+<code>src/hono-base.ts:35</code> (error). Bạn ghi đè chúng bằng <code>app.onError(...)</code> (<code>src/hono-base.ts:271</code>) và
+<code>app.notFound(...)</code> (<code>src/hono-base.ts:291</code>).</p>
 <h3 id="the-finalized-check">The finalized check</h3>
-<p><code>src/compose.ts:67</code> — <code>if (res &amp;&amp; (context.finalized === false || isError)) context.res = res</code>. A returned
-response is only committed if the context isn't already finalized (or this is the error path). This is the
-link back to §4.5: <code>c.finalized</code> (<code>src/context.ts:317</code>) is the bit that prevents an outer middleware from
-clobbering a response an inner layer already committed.</p>
+<p><code>src/compose.ts:67</code> — <code>if (res &amp;&amp; (context.finalized === false || isError)) context.res = res</code>. Một response trả về
+chỉ được commit nếu context chưa bị finalize (hoặc đây là đường error). Đây là mắt xích nối ngược về §4.5:
+<code>c.finalized</code> (<code>src/context.ts:317</code>) là bit ngăn một middleware bên ngoài đè lên một response mà lớp bên trong đã
+commit.</p>
 <div class="callout tip"><span class="ic">💡</span>
-<p> <strong>Tip:</strong> the fast path from §1.4 (<code>src/hono-base.ts:430</code>) <em>skips <code>compose</code> entirely</em> when only one
-handler matched. So the onion only exists when you actually have middleware. A bare <code>app.get('/', h)</code>
-with no <code>use()</code> never allocates a single <code>dispatch</code> closure.</p>
+<p> <strong>Tip:</strong> đường fast path từ §1.4 (<code>src/hono-base.ts:430</code>) <em>bỏ qua hẳn <code>compose</code></em> khi chỉ có đúng một handler
+match. Nên cái onion chỉ tồn tại khi bạn thật sự có middleware. Một <code>app.get('/', h)</code> trơ trọi không có <code>use()</code> sẽ
+không bao giờ cấp phát lấy một closure <code>dispatch</code> nào.</p>
 </div>
 <hr />
-<h2 id="55-predicting-run-order">5.5 Predicting run order</h2>
-<p>Apply the model. For:</p>
+<h2 id="55-du-oan-thu-tu-chay">5.5 Dự đoán thứ tự chạy</h2>
+<p>Áp dụng mô hình. Với:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="k">async</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">n</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;A in&#39;</span><span class="p">);</span><span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">n</span><span class="p">();</span><span class="w"> </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;A out&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">})</span>
 <span class="nx">app</span><span class="p">.</span><span class="nx">use</span><span class="p">(</span><span class="k">async</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">n</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;B in&#39;</span><span class="p">);</span><span class="w">  </span><span class="k">await</span><span class="w"> </span><span class="nx">n</span><span class="p">();</span><span class="w"> </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;B out&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">})</span>
 <span class="nx">app</span><span class="p">.</span><span class="nx">get</span><span class="p">(</span><span class="s1">&#39;/&#39;</span><span class="p">,</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="s1">&#39;H&#39;</span><span class="p">);</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="nx">c</span><span class="p">.</span><span class="nx">text</span><span class="p">(</span><span class="s1">&#39;ok&#39;</span><span class="p">)</span><span class="w"> </span><span class="p">})</span>
 </code></pre></div></figure>
 
-<p>The output is:</p>
+<p>Output là:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>A in
 B in
 H
@@ -193,11 +193,11 @@ B out
 A out
 </code></pre></div></figure>
 
-<p><code>A in → B in</code> (outer→inner, before <code>next</code>), then <code>H</code>, then <code>B out → A out</code> (inner→outer, after <code>next</code>).
-If <code>H</code> threw, the throw would unwind through <code>B</code>'s and <code>A</code>'s <code>await n()</code> calls to <code>onError</code>. If you forgot
-<code>await</code> on <code>next()</code>, <code>A out</code> could print <em>before</em> <code>H</code> finished — the classic async-middleware bug.</p>
+<p><code>A in → B in</code> (outer→inner, trước <code>next</code>), rồi <code>H</code>, rồi <code>B out → A out</code> (inner→outer, sau <code>next</code>). Nếu <code>H</code> throw,
+throw đó sẽ tháo ngược qua các lời gọi <code>await n()</code> của <code>B</code> và <code>A</code> để tới <code>onError</code>. Nếu bạn quên <code>await</code> ở <code>next()</code>,
+<code>A out</code> có thể in ra <em>trước khi</em> <code>H</code> chạy xong — đúng cái bug kinh điển của async middleware.</p>
 <hr />
-<h2 id="56-lab-5-see-the-onion-unwind-and-break-it">5.6 Lab 5 — see the onion unwind, and break it</h2>
+<h2 id="56-lab-5-nhin-onion-thao-nguoc-ra-va-lam-no-vo">5.6 Lab 5 — nhìn onion tháo ngược ra, và làm nó vỡ</h2>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// onion.ts</span>
 <span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Hono</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono&#39;</span>
 <span class="kd">const</span><span class="w"> </span><span class="nx">app</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="ow">new</span><span class="w"> </span><span class="nx">Hono</span><span class="p">()</span>
@@ -220,63 +220,61 @@ If <code>H</code> threw, the throw would unwind through <code>B</code>'s and <co
 </code></pre></div></figure>
 
 <div class="callout lab"><span class="ic">🧪</span>
-<p> <strong>Record in <code>labs/lab5-onion.md</code>:</strong> the order string and the error line. Expected: <code>A in → B in → H →
-B out → A out</code>, then <code>500 caught: kaboom</code>. Now <em>remove</em> the <code>await</code> from one <code>n()</code> and re-run — note how
-the <code>out</code> lines reorder. You've just reproduced the most common middleware bug in the wild, and you can
-explain it from <code>src/compose.ts:51</code>.</p>
+<p> <strong>Ghi vào <code>labs/lab5-onion.md</code>:</strong> chuỗi thứ tự và dòng error. Kỳ vọng: <code>A in → B in → H →
+B out → A out</code>, rồi <code>500 caught: kaboom</code>. Giờ <em>bỏ</em> <code>await</code> khỏi một <code>n()</code> rồi chạy lại — để ý các dòng <code>out</code> đảo
+thứ tự thế nào. Bạn vừa tái hiện đúng cái bug middleware phổ biến nhất ngoài thực tế, và bạn giải thích được nó
+từ <code>src/compose.ts:51</code>.</p>
 </div>
 <hr />
 <h2 id="57-checkpoint">5.7 Checkpoint</h2>
 <ol>
-<li>Draw the onion for <code>use(A); use(B); get(H)</code> and give the exact console order.</li>
-<li>What is <code>next</code>, literally, in <code>compose.ts</code>? Quote the line.</li>
-<li>Why does calling <code>next()</code> twice throw, and which line enforces it?</li>
-<li>Where exactly is an error thrown by the handler caught, and what makes it propagate up through the
-   middleware?</li>
-<li>What does the <code>c.finalized</code> check at <code>compose.ts:67</code> prevent?</li>
-<li>When is <code>compose</code> <em>not</em> called at all?</li>
+<li>Vẽ cái onion cho <code>use(A); use(B); get(H)</code> và cho biết thứ tự console chính xác.</li>
+<li><code>next</code> là gì, theo đúng nghĩa đen, trong <code>compose.ts</code>? Trích nguyên dòng đó.</li>
+<li>Vì sao gọi <code>next()</code> hai lần thì throw, và dòng nào cưỡng chế điều đó?</li>
+<li>Một error do handler ném ra bị bắt chính xác ở đâu, và cái gì khiến nó lan ngược lên qua các middleware?</li>
+<li>Kiểm tra <code>c.finalized</code> ở <code>compose.ts:67</code> ngăn chặn điều gì?</li>
+<li>Khi nào <code>compose</code> hoàn toàn <em>không</em> được gọi?</li>
 </ol>
 <div class="callout note">
-<p>If #2 or #4 is shaky, re-read §5.3–§5.4. If #6 is shaky, re-read §5.4's tip and §1.4.</p>
+<p>Nếu #2 hoặc #4 còn lung lay, đọc lại §5.3–§5.4. Nếu #6 còn lung lay, đọc lại tip của §5.4 và §1.4.</p>
 </div>
 <hr />
 <h2 class="connect" id="connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</h2>
-<p>You already know this shape — you just know it as React's <code>useEffect</code> cleanup, or Express's
-<code>(req, res, next)</code>, or Next's <code>middleware.ts</code>. But Next's middleware is <em>flat</em>: it runs before your route
-and can rewrite/redirect, but it has no "after" phase wrapped around your handler. Hono's onion gives you
-both halves in one mental model — and you can <em>see</em> the mechanism, because it's 73 lines, not a framework
-internal.</p>
-<p>That visibility pays off when temlet crosses into Tauri. Cross-cutting concerns you currently scatter
-across Next middleware, route wrappers, and React effects — request logging, auth, timing, error shaping —
-collapse into composable <code>(c, next)</code> functions that run identically on the edge and behind the native
-shell. And because <code>compose</code> is just <code>await</code>ed recursion, your async cleanup ("after next()") behaves
-predictably, instead of the subtle ordering surprises you hit when React effect cleanup and server
-middleware disagree about when "after" is. When you port temlet, treat each cross-cutting concern as one onion layer
-and you'll delete a surprising amount of glue.</p>
+<p>Bạn đã quen với hình dạng này rồi — chỉ là bạn biết nó dưới dạng cleanup của <code>useEffect</code> trong React, hay
+<code>(req, res, next)</code> của Express, hay <code>middleware.ts</code> của Next. Nhưng middleware của Next thì <em>phẳng</em>: nó chạy trước
+route của bạn và có thể rewrite/redirect, nhưng nó không có pha "sau" bọc quanh handler. Onion của Hono cho bạn cả
+hai nửa trong một mô hình tư duy — và bạn <em>nhìn thấy</em> được cơ chế, vì nó là 73 dòng, chứ không phải một chỗ nội bộ
+của framework.</p>
+<p>Cái độ nhìn thấy đó sinh lời khi temlet bước sang Tauri. Những mối quan tâm cross-cutting mà bây giờ bạn rải khắp
+Next middleware, các route wrapper, và React effect — request logging, auth, đo thời gian, nắn error — gộp lại thành
+những hàm <code>(c, next)</code> compose được, chạy giống hệt nhau ở edge lẫn phía sau native shell. Và vì <code>compose</code> chỉ là đệ
+quy được <code>await</code>, phần cleanup async của bạn ("after next()") hành xử đoán trước được, thay vì mấy pha đảo thứ tự tinh
+vi mà bạn gặp khi React effect cleanup và server middleware bất đồng về việc "after" là lúc nào. Khi port temlet, hãy
+coi mỗi mối quan tâm cross-cutting là một lớp onion, bạn sẽ xoá được một lượng code keo dán nhiều đến bất ngờ.</p>
 <p><strong>Next:</strong> <a href="06-runtime-adapters-and-portability.html">Chapter 6 — Runtime Adapters &amp; Portability →</a></p>
-    <nav class="pager"><a class="prev" href="04-context-and-responses.html"><span class="lbl">← Previous</span><span class="ttl">Context &amp; Building Responses</span></a><a class="next" href="06-runtime-adapters-and-portability.html"><span class="lbl">Next →</span><span class="ttl">Runtime Adapters &amp; Portability</span></a></nav>
+    <nav class="pager"><a class="prev" href="04-context-and-responses.html"><span class="lbl">← Trước</span><span class="ttl">Context &amp; Building Responses</span></a><a class="next" href="06-runtime-adapters-and-portability.html"><span class="lbl">Tiếp →</span><span class="ttl">Runtime Adapters &amp; Portability</span></a></nav>
   </article></main>
-  <aside class="toc"><nav><h4>On this page</h4>
-<a class="lvl-2" href="#51-why-it-matters">5.1 Why it matters</a>
+  <aside class="toc"><nav><h4>Trong trang này</h4>
+<a class="lvl-2" href="#51-vi-sao-quan-trong">5.1 Vì sao quan trọng</a>
 <a class="lvl-2" href="#52-mental-model-the-onion">5.2 Mental model: the onion</a>
-<a class="lvl-2" href="#53-the-whole-algorithm-read-line-by-line">5.3 The whole algorithm, read line by line</a>
-<a class="lvl-3" href="#the-one-line-that-builds-the-onion">The one line that builds the onion</a>
+<a class="lvl-2" href="#53-toan-bo-thuat-toan-oc-tung-dong">5.3 Toàn bộ thuật toán, đọc từng dòng</a>
+<a class="lvl-3" href="#ung-mot-dong-dung-nen-cai-onion">Đúng một dòng dựng nên cái onion</a>
 <a class="lvl-3" href="#the-guard">The guard</a>
-<a class="lvl-3" href="#reaching-the-end">Reaching the end</a>
-<a class="lvl-2" href="#54-errors-and-404s-where-theyre-caught">5.4 Errors and 404s: where they&#x27;re caught</a>
+<a class="lvl-3" href="#cham-toi-iem-cuoi">Chạm tới điểm cuối</a>
+<a class="lvl-2" href="#54-error-va-404-bi-bat-o-au">5.4 Error và 404: bị bắt ở đâu</a>
 <a class="lvl-3" href="#the-finalized-check">The finalized check</a>
-<a class="lvl-2" href="#55-predicting-run-order">5.5 Predicting run order</a>
-<a class="lvl-2" href="#56-lab-5-see-the-onion-unwind-and-break-it">5.6 Lab 5 — see the onion unwind, and break it</a>
+<a class="lvl-2" href="#55-du-oan-thu-tu-chay">5.5 Dự đoán thứ tự chạy</a>
+<a class="lvl-2" href="#56-lab-5-nhin-onion-thao-nguoc-ra-va-lam-no-vo">5.6 Lab 5 — nhìn onion tháo ngược ra, và làm nó vỡ</a>
 <a class="lvl-2" href="#57-checkpoint">5.7 Checkpoint</a>
 <a class="lvl-2" href="#connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</a>
 </nav></aside>
 </div>
 <footer class="site-foot">
   <a class="foot-brand" href="https://rumitx.com" target="_blank" rel="noopener"><span class="foot-x">X</span> RumitX</a>
-  Hono Internals Handbook · grounded in <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
+  Hono Internals Handbook · neo vào <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
   @ <code>v4.12.25</code><br>
-  A <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> publication · Edge AI, human-centric design
+  Một ấn phẩm của <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> · Edge AI, human-centric design
 </footer>
-<script src="assets/app.js"></script>
+<script src="../assets/app.js"></script>
 </body>
 </html>

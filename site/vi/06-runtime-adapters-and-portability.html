@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="vi" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chapter 6 — Runtime Adapters &amp; Portability · Hono Internals Handbook · RumitX</title>
-<meta name="description" content="A from-the-source handbook on Hono internals — the four-router routing engine and its RegExpRouter one-regex trick, the Context object, the compose middleware onion, multi-runtime adapters, and the type-safe routing &amp; RPC client.">
-<link rel="icon" type="image/svg+xml" href="assets/brand/logo_x.svg">
+<meta name="description" content="Cuốn sách đọc thẳng từ source về internals của Hono — routing engine bốn router và mẹo gộp-một-regex của RegExpRouter, Context object, compose middleware onion, các runtime adapter, và routing type-safe cùng RPC client.">
+<link rel="icon" type="image/svg+xml" href="../assets/brand/logo_x.svg">
 <meta name="author" content="RumitX">
 <meta name="theme-color" content="#0B1E2D">
-<link rel="alternate" hreflang="en" href="06-runtime-adapters-and-portability.html">
-<link rel="alternate" hreflang="vi" href="vi/06-runtime-adapters-and-portability.html">
-<link rel="alternate" hreflang="x-default" href="06-runtime-adapters-and-portability.html">
-<link rel="stylesheet" href="assets/styles.css">
-<link rel="stylesheet" href="assets/code.css">
+<link rel="alternate" hreflang="en" href="../06-runtime-adapters-and-portability.html">
+<link rel="alternate" hreflang="vi" href="06-runtime-adapters-and-portability.html">
+<link rel="alternate" hreflang="x-default" href="../06-runtime-adapters-and-portability.html">
+<link rel="stylesheet" href="../assets/styles.css">
+<link rel="stylesheet" href="../assets/code.css">
 <style>
 .lang-switch{display:inline-flex;align-items:center;gap:.1rem;padding:.15rem;
   border:1px solid var(--border);border-radius:999px;background:var(--surface);
@@ -31,14 +31,14 @@
   <a class="brand" href="index.html"><span class="mark"><span>X</span></span> Hono Internals Handbook</a>
   <span class="spacer"></span>
   <span class="meta-pill">pinned&nbsp;v4.12.25</span>
-  <div class="lang-switch"><span aria-current="true">EN</span><a href="vi/06-runtime-adapters-and-portability.html" hreflang="vi">VI</a></div>
+  <div class="lang-switch"><a href="../06-runtime-adapters-and-portability.html" hreflang="en">EN</a><span aria-current="true">VI</span></div>
   <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
 </header>
 <div class="backdrop"></div>
 <div class="shell">
   <aside class="rail"><nav>
-<a class="brand-mini" href="index.html"><img src="assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
-<h4>Chapters</h4>
+<a class="brand-mini" href="index.html"><img src="../assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
+<h4>Chương</h4>
 <a class="" href="00-environment-and-typescript-web-refresher.html"><span class="num">00</span><span>Environment &amp; TypeScript / Web-standards Refresher</span></a>
 <a class="" href="01-mental-model-and-repo-map.html"><span class="num">01</span><span>Mental Model &amp; Repo Map</span></a>
 <a class="" href="02-app-lifecycle-and-request.html"><span class="num">02</span><span>The App Object &amp; HonoRequest</span></a>
@@ -48,28 +48,28 @@
 <a class="active" href="06-runtime-adapters-and-portability.html"><span class="num">06</span><span>Runtime Adapters &amp; Portability</span></a>
 <a class="" href="07-typed-routes-rpc-and-validation.html"><span class="num">07</span><span>Typed Routes, the RPC Client &amp; Validation</span></a>
 <a class="" href="08-capstone-extending-and-staying-current.html"><span class="num">08</span><span>Capstone: Extending &amp; Staying Current</span></a>
-<h4>Reference</h4>
+<h4>Tham khảo</h4>
 <a class="" href="glossary.html"><span class="num">§</span><span>Glossary &amp; Index</span></a>
 <a href="https://github.com/rumitvn/hono-book" target="_blank" rel="noopener"><span class="num">↗</span><span>GitHub repo</span></a>
 </nav></aside>
   <main class="content"><article class="article">
-    <div class="crumbs"><a href="index.html">Handbook</a> / Chapter 06</div>
+    <div class="crumbs"><a href="index.html">Handbook</a> / Chương 06</div>
     <h1 id="chapter-6-runtime-adapters-portability">Chapter 6 — Runtime Adapters &amp; Portability</h1>
 <div class="callout goal">
-<p><strong>Goal:</strong> Understand the seam that makes <em>one</em> Hono app run unchanged on Cloudflare Workers, Bun, Deno,
-Node, and Lambda. Read the adapters, the <code>getRuntimeKey()</code> detector, and the <code>env()</code> helper, and meet the
-streaming/SSE helpers. This is the <strong>web→native bridge</strong> chapter. Grounded in <code>honojs/hono</code> at
+<p><strong>Goal:</strong> Hiểu cái seam khiến <em>một</em> app Hono chạy y nguyên trên Cloudflare Workers, Bun, Deno,
+Node, và Lambda. Đọc các adapter, hàm dò <code>getRuntimeKey()</code>, helper <code>env()</code>, và làm quen với mấy
+helper streaming/SSE. Đây là chương <strong>web→native bridge</strong>. Neo vào <code>honojs/hono</code> tại
 <strong><code>v4.12.25</code></strong> (<code>fce483e</code>).</p>
 </div>
 <hr />
-<h2 id="61-why-it-matters">6.1 Why it matters</h2>
-<p>This is the chapter that explains Hono's reason to exist. Every other framework picks a runtime — Express
-picks Node, Next picks its own server, Workers code picks <code>workerd</code>. Hono picks <em>none</em>: the core knows only
-<code>Request</code>/<code>Response</code> (Chapter 0), and a thin <strong>adapter</strong> per runtime translates the runtime's native entry
-shape into a <code>fetch</code> call. Understanding this seam is understanding how the same code ships everywhere — and
-it's the exact mechanism you'll lean on carrying temlet across the web→native line.</p>
+<h2 id="61-vi-sao-quan-trong">6.1 Vì sao quan trọng</h2>
+<p>Đây là chương giải thích lý do tồn tại của Hono. Mọi framework khác đều chọn sẵn một runtime — Express
+chọn Node, Next chọn server riêng của nó, code Workers chọn <code>workerd</code>. Hono chọn <em>không cái nào</em>: lõi chỉ
+biết <code>Request</code>/<code>Response</code> (Chương 0), và một <strong>adapter</strong> mỏng cho mỗi runtime lo việc dịch cái entry shape
+gốc của runtime đó thành một lời gọi <code>fetch</code>. Hiểu cái seam này là hiểu vì sao cùng một đoạn code ship được
+đi khắp nơi — và nó cũng chính là cơ chế bạn sẽ dựa vào khi mang temlet vượt qua ranh giới web→native.</p>
 <hr />
-<h2 id="62-mental-model-a-thin-translation-shell">6.2 Mental model: a thin translation shell</h2>
+<h2 id="62-mental-model-mot-lop-vo-dich-mong">6.2 Mental model: một lớp vỏ dịch mỏng</h2>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>   Cloudflare Workers          Bun / Deno              AWS Lambda
    export default {            export default {        export const handler =
      fetch(req, env, ctx)        fetch(req)              (event) =&gt; …
@@ -85,38 +85,38 @@ it's the exact mechanism you'll lean on carrying temlet across the web→native 
               Response  ───────────────────────► back to each runtime&#39;s native shape
 </code></pre></div></figure>
 
-<p>Each runtime has a different <em>native</em> entry shape. The adapter's whole job is to massage that shape into
-<code>app.fetch(request, env, ctx)</code> and massage the returned <code>Response</code> back. The core never learns which
-runtime it's on.</p>
+<p>Mỗi runtime có một entry shape <em>gốc</em> khác nhau. Toàn bộ nhiệm vụ của adapter là nhào cái shape đó thành
+<code>app.fetch(request, env, ctx)</code> rồi nhào ngược <code>Response</code> trả về. Lõi không bao giờ biết nó đang chạy trên
+runtime nào.</p>
 <div class="callout note"><span class="ic">🧠</span>
-<p> <strong>Mental model:</strong> the adapter is a <em>power plug adapter</em>, not a transformer. It changes the shape of
-the connector; it doesn't change the electricity. Your app is the appliance and it runs the same
-everywhere.</p>
+<p> <strong>Mental model:</strong> adapter là một <em>cục chuyển đầu phích cắm</em>, không phải một cục biến áp. Nó đổi hình
+dạng của đầu nối; nó không đổi dòng điện. App của bạn là cái thiết bị điện, và nó chạy giống hệt nhau ở
+mọi nơi.</p>
 </div>
 <hr />
-<h2 id="63-the-simplest-adapter-cloudflare-workers">6.3 The simplest adapter: Cloudflare Workers</h2>
-<p>For Workers, the runtime's native entry <em>already</em> matches Hono's: <code>export default { fetch(req, env, ctx) }</code>.
-So you don't even import an adapter to run — you just <code>export default app</code>, because a Hono app <em>is</em> a
-<code>{ fetch }</code> object. The <code>hono/cloudflare-workers</code> entry point (<code>src/adapter/cloudflare-workers/index.ts</code>)
-adds only the <em>runtime-specific extras</em> that can't be web-standard:</p>
+<h2 id="63-adapter-on-gian-nhat-cloudflare-workers">6.3 Adapter đơn giản nhất: Cloudflare Workers</h2>
+<p>Với Workers, entry gốc của runtime <em>vốn đã</em> khớp với Hono: <code>export default { fetch(req, env, ctx) }</code>.
+Nên bạn thậm chí chẳng cần import một adapter để chạy — chỉ cần <code>export default app</code>, bởi một app Hono <em>chính
+là</em> một object <code>{ fetch }</code>. Entry point <code>hono/cloudflare-workers</code> (<code>src/adapter/cloudflare-workers/index.ts</code>)
+chỉ thêm những <em>thứ phụ đặc thù cho runtime</em> mà không thể chuẩn-hoá-theo-web được:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// src/adapter/cloudflare-workers/index.ts</span>
 <span class="k">export</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">serveStatic</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;./serve-static-module&#39;</span><span class="w">   </span><span class="c1">// :6 — serve from Workers&#39; static assets</span>
 <span class="k">export</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">upgradeWebSocket</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;./websocket&#39;</span><span class="w">        </span><span class="c1">// :7 — CF&#39;s WebSocket pair API</span>
 <span class="k">export</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">getConnInfo</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;./conninfo&#39;</span><span class="w">              </span><span class="c1">// :8 — read cf-connecting-ip</span>
 </code></pre></div></figure>
 
-<p><code>getConnInfo</code> (<code>src/adapter/cloudflare-workers/conninfo.ts</code>) is one line — it reads the client IP from the
-<code>cf-connecting-ip</code> header. Compare it to the <strong>Bun</strong> and <strong>Deno</strong> adapters (<code>src/adapter/bun/</code>,
-<code>src/adapter/deno/</code>), each of which has its <em>own</em> <code>conninfo.ts</code>, <code>serve-static.ts</code>, and <code>websocket.ts</code>.
-Same exported names, runtime-specific bodies. That uniform surface is the adapter contract.</p>
+<p><code>getConnInfo</code> (<code>src/adapter/cloudflare-workers/conninfo.ts</code>) chỉ một dòng — nó đọc client IP từ header
+<code>cf-connecting-ip</code>. Đặt cạnh các adapter <strong>Bun</strong> và <strong>Deno</strong> (<code>src/adapter/bun/</code>,
+<code>src/adapter/deno/</code>), mỗi cái có <code>conninfo.ts</code>, <code>serve-static.ts</code>, và <code>websocket.ts</code> <em>riêng</em>.
+Cùng tên export, thân hàm đặc thù cho runtime. Cái bề mặt đồng nhất đó chính là adapter contract.</p>
 <div class="callout info"><span class="ic">📁</span>
-<p> Nine adapters ship in <code>src/adapter/</code>: <code>aws-lambda</code>, <code>bun</code>, <code>cloudflare-pages</code>, <code>cloudflare-workers</code>,
-<code>deno</code>, <code>lambda-edge</code>, <code>netlify</code>, <code>service-worker</code>, <code>vercel</code>. Each is small — the cleverness is in the
-core <em>not</em> needing them.</p>
+<p> Có chín adapter ship trong <code>src/adapter/</code>: <code>aws-lambda</code>, <code>bun</code>, <code>cloudflare-pages</code>, <code>cloudflare-workers</code>,
+<code>deno</code>, <code>lambda-edge</code>, <code>netlify</code>, <code>service-worker</code>, <code>vercel</code>. Cái nào cũng nhỏ — chỗ khéo nằm ở việc lõi
+<em>không</em> cần đến chúng.</p>
 </div>
 <hr />
-<h2 id="64-runtime-detection-getruntimekey">6.4 Runtime detection: <code>getRuntimeKey()</code></h2>
-<p>When code <em>does</em> need to branch on the runtime, Hono detects it rather than asking you. Read
+<h2 id="64-nhan-dien-runtime-getruntimekey">6.4 Nhận diện runtime: <code>getRuntimeKey()</code></h2>
+<p>Khi code <em>thật sự</em> cần rẽ nhánh theo runtime, Hono tự dò chứ không bắt bạn khai báo. Đọc
 <code>getRuntimeKey()</code> (<code>src/helper/adapter/index.ts:50</code>):</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">getRuntimeKey</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">()</span><span class="o">:</span><span class="w"> </span><span class="nx">Runtime</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nb">global</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">globalThis</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">any</span>
@@ -133,16 +133,16 @@ core <em>not</em> needing them.</p>
 <span class="p">}</span>
 </code></pre></div></figure>
 
-<p>The <code>Runtime</code> type (<code>src/helper/adapter/index.ts:8</code>) is the closed set:
-<code>'node' | 'deno' | 'bun' | 'workerd' | 'fastly' | 'edge-light' | 'other'</code>. Detection prefers the
-<strong>standardized <code>navigator.userAgent</code></strong> (which Deno, Bun, Workers, and modern Node all populate —
-<code>knownUserAgents</code> maps <code>'Cloudflare-Workers' → 'workerd'</code>, etc.), and only falls back to runtime-specific
-globals like <code>EdgeRuntime</code> or <code>process</code> when needed. This is itself a web-standards-first design: detect by
-the standard signal, degrade to vendor checks.</p>
+<p>Type <code>Runtime</code> (<code>src/helper/adapter/index.ts:8</code>) là tập đóng:
+<code>'node' | 'deno' | 'bun' | 'workerd' | 'fastly' | 'edge-light' | 'other'</code>. Việc dò ưu tiên
+<strong><code>navigator.userAgent</code> chuẩn hoá</strong> (mà Deno, Bun, Workers, và Node hiện đại đều điền vào —
+<code>knownUserAgents</code> map <code>'Cloudflare-Workers' → 'workerd'</code>, v.v.), và chỉ lùi về các global đặc thù cho
+runtime như <code>EdgeRuntime</code> hay <code>process</code> khi cần. Bản thân điều này đã là một thiết kế web-standards-first:
+dò bằng tín hiệu chuẩn, rồi hạ dần xuống mấy phép kiểm tra riêng của từng vendor.</p>
 <hr />
-<h2 id="65-the-env-seam-where-the-platform-enters">6.5 The <code>env()</code> seam: where the platform enters</h2>
-<p><code>c.env</code> (Chapter 4) is the runtime's bindings — but <em>what <code>env</code> is</em> differs per runtime, and that
-difference is centralized in one helper. Read <code>env()</code> (<code>src/helper/adapter/index.ts:10</code>):</p>
+<h2 id="65-uong-noi-env-noi-platform-buoc-vao">6.5 Đường nối <code>env()</code>: nơi platform bước vào</h2>
+<p><code>c.env</code> (Chương 4) là các binding của runtime — nhưng <em><code>env</code> là cái gì</em> lại khác nhau tuỳ runtime, và cái
+khác biệt đó được gom vào một helper duy nhất. Đọc <code>env()</code> (<code>src/helper/adapter/index.ts:10</code>):</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">const</span><span class="w"> </span><span class="nx">env</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nx">c</span><span class="p">,</span><span class="w"> </span><span class="nx">runtime</span><span class="o">?</span><span class="p">)</span><span class="w"> </span><span class="p">=&gt;</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">globalEnv</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="nb">globalThis</span><span class="w"> </span><span class="kr">as</span><span class="w"> </span><span class="nx">any</span><span class="p">)</span><span class="o">?</span><span class="p">.</span><span class="nx">process</span><span class="o">?</span><span class="p">.</span><span class="nx">env</span>
 <span class="w">  </span><span class="nx">runtime</span><span class="w"> </span><span class="o">??=</span><span class="w"> </span><span class="nx">getRuntimeKey</span><span class="p">()</span>
@@ -159,31 +159,31 @@ difference is centralized in one helper. Read <code>env()</code> (<code>src/help
 <span class="p">}</span>
 </code></pre></div></figure>
 
-<p>This is the whole portability payoff in one table. On Node/Bun, <code>env(c)</code> reads <code>process.env</code>. On Deno, it
-calls <code>Deno.env.toObject()</code>. On Workers, it returns <code>c.env</code> (the bindings the platform injected). Your code
-writes <code>env(c).DATABASE_URL</code> <em>once</em> and it resolves correctly everywhere — you never write
-<code>process.env</code> (which doesn't exist on Workers) or <code>Deno.env</code> (which doesn't exist on Node).</p>
+<p>Đây là toàn bộ phần lời của portability, gói trong một cái bảng. Trên Node/Bun, <code>env(c)</code> đọc <code>process.env</code>.
+Trên Deno, nó gọi <code>Deno.env.toObject()</code>. Trên Workers, nó trả về <code>c.env</code> (các binding mà platform đã inject).
+Code của bạn viết <code>env(c).DATABASE_URL</code> <em>một lần</em> và nó resolve đúng ở mọi nơi — bạn không bao giờ phải viết
+<code>process.env</code> (thứ không tồn tại trên Workers) hay <code>Deno.env</code> (thứ không tồn tại trên Node).</p>
 <div class="callout tip"><span class="ic">💡</span>
-<p> <strong>Tip:</strong> this is dependency injection at the runtime boundary. The framework asks the environment
-"what are my secrets/bindings?" and each runtime answers in its own dialect. Your handler stays in one
-language.</p>
+<p> <strong>Tip:</strong> đây chính là dependency injection ngay tại ranh giới runtime. Framework hỏi môi trường
+"secret/binding của tôi là gì?" và mỗi runtime trả lời bằng thổ ngữ của riêng nó. Handler của bạn vẫn
+nói đúng một thứ tiếng.</p>
 </div>
 <hr />
-<h2 id="66-streaming-sse-still-just-response">6.6 Streaming &amp; SSE: still just <code>Response</code></h2>
-<p>Long-lived responses (streaming, server-sent events) are where you'd expect runtime-specific code — and
-Hono still keeps them web-standard. The streaming helpers (<code>src/helper/streaming/index.ts</code>) export:</p>
+<h2 id="66-streaming-sse-van-chi-la-response">6.6 Streaming &amp; SSE: vẫn chỉ là <code>Response</code></h2>
+<p>Các response sống lâu (streaming, server-sent events) là chỗ bạn dễ tưởng sẽ cần code đặc thù cho runtime —
+vậy mà Hono vẫn giữ chúng chuẩn-web. Các helper streaming (<code>src/helper/streaming/index.ts</code>) export ra:</p>
 <ul>
-<li><code>stream(c, cb)</code> — write to a <code>ReadableStream</code>-backed <code>Response</code>.</li>
-<li><code>streamSSE(c, cb)</code> — server-sent events; the <code>SSEMessage</code> shape is <code>{ data, event?, id?, retry? }</code>
+<li><code>stream(c, cb)</code> — ghi vào một <code>Response</code> được backed bằng <code>ReadableStream</code>.</li>
+<li><code>streamSSE(c, cb)</code> — server-sent events; shape <code>SSEMessage</code> là <code>{ data, event?, id?, retry? }</code>
   (<code>src/helper/streaming/sse.ts:6</code>).</li>
-<li><code>streamText(c, cb)</code> — chunked text.</li>
+<li><code>streamText(c, cb)</code> — text chia chunk.</li>
 </ul>
-<p>All three build a <code>Response</code> whose body is a stream — the same <code>Response</code> from Chapter 0, just with a
-streaming body. Because <code>ReadableStream</code> is a web standard, this works identically on Workers, Bun, and
-Deno without per-runtime branches.</p>
+<p>Cả ba đều build một <code>Response</code> mà body là một stream — vẫn cái <code>Response</code> từ Chương 0, chỉ khác là body dạng
+streaming. Vì <code>ReadableStream</code> là một web standard, cái này chạy y hệt trên Workers, Bun, và Deno mà không
+cần rẽ nhánh cho từng runtime.</p>
 <hr />
-<h2 id="67-lab-6-one-app-two-runtimes">6.7 Lab 6 — one app, two runtimes</h2>
-<p>Prove portability by running the <em>identical</em> app file on two runtimes. Reuse <code>hono-hello</code>:</p>
+<h2 id="67-lab-6-mot-app-hai-runtime">6.7 Lab 6 — một app, hai runtime</h2>
+<p>Chứng minh portability bằng cách chạy <em>cùng một</em> file app trên hai runtime. Tái dùng <code>hono-hello</code>:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// portable.ts — note: ZERO runtime-specific imports</span>
 <span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">Hono</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono&#39;</span>
 <span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">getRuntimeKey</span><span class="p">,</span><span class="w"> </span><span class="nx">env</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono/adapter&#39;</span>
@@ -203,58 +203,58 @@ curl<span class="w"> </span>-s<span class="w"> </span>localhost:3000/<span class
 </code></pre></div></figure>
 
 <div class="callout lab"><span class="ic">🧪</span>
-<p> <strong>Record in <code>labs/lab6-adapters.md</code>:</strong> the <code>runtime</code> value reported by each runtime you try (e.g.
-<code>"bun"</code>, <code>"deno"</code>), and confirm <code>GREETING</code> resolved on each via the <code>env(c)</code> seam from §6.5 — <em>without</em>
-the file ever importing a runtime-specific module. That "no runtime import in the app file" property is
-the entire chapter in one observation.</p>
+<p> <strong>Record in <code>labs/lab6-adapters.md</code>:</strong> giá trị <code>runtime</code> mà mỗi runtime bạn thử báo về (ví dụ
+<code>"bun"</code>, <code>"deno"</code>), và xác nhận <code>GREETING</code> resolve được trên từng cái qua đường nối <code>env(c)</code> ở §6.5 — <em>mà</em>
+file app không hề import một module đặc thù cho runtime nào. Cái tính chất "không import runtime trong file
+app" đó chính là cả chương gói lại trong một quan sát.</p>
 </div>
 <hr />
 <h2 id="68-checkpoint">6.8 Checkpoint</h2>
 <ol>
-<li>What is the universal entry point every adapter targets? What does an adapter actually <em>do</em>?</li>
-<li>Why can a Cloudflare Worker just <code>export default app</code> with no adapter import?</li>
-<li>How does <code>getRuntimeKey()</code> detect the runtime, and which signal does it prefer over vendor globals?</li>
-<li>Walk through <code>env(c)</code> on Workers vs. Node — what does each return, and why does that let your code stay
+<li>Entry point phổ quát mà mọi adapter nhắm tới là gì? Adapter thật ra <em>làm</em> cái gì?</li>
+<li>Vì sao một Cloudflare Worker chỉ cần <code>export default app</code> mà không import adapter nào?</li>
+<li><code>getRuntimeKey()</code> dò runtime bằng cách nào, và nó ưu tiên tín hiệu nào hơn các global của vendor?</li>
+<li>Đi qua <code>env(c)</code> trên Workers so với Node — mỗi cái trả về gì, và vì sao điều đó giữ cho code của bạn
    runtime-agnostic?</li>
-<li>Why do streaming and SSE <em>not</em> need per-runtime adapters?</li>
+<li>Vì sao streaming và SSE <em>không</em> cần adapter riêng cho từng runtime?</li>
 </ol>
 <div class="callout note">
-<p>If #4 is shaky, re-read §6.5. If #1–#2 are shaky, re-read §6.2–§6.3.</p>
+<p>Nếu #4 còn lung lay, đọc lại §6.5. Nếu #1–#2 còn lung lay, đọc lại §6.2–§6.3.</p>
 </div>
 <hr />
 <h2 class="connect" id="connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</h2>
-<p>This is the chapter you'll come back to. temlet's hardest migration problem isn't UI — it's that its
-server-side logic assumes Node. <code>process.env</code>, the Node <code>fs</code>, a long-lived server: none of those survive
-the trip to a Worker, and they get awkward behind Tauri, where the "backend" is a bundled process on the
-user's machine. Every one of those assumptions is a rewrite.</p>
-<p>Hono's adapter seam is the pattern that makes the rewrite a <em>configuration</em>, not a reimplementation. Move
-temlet's API handlers onto runtime-agnostic Hono handlers that read <code>env(c)</code> instead of <code>process.env</code>, and
-the same code can serve from Cloudflare's edge today and from a sidecar behind your Tauri shell tomorrow —
-you swap the adapter, not the app. The <code>getRuntimeKey()</code> detector even lets you keep the rare genuinely
-runtime-specific branch (say, a native-only capability behind Tauri) explicit and contained, instead of
-smeared across the codebase as ambient <code>process</code> assumptions. That's the difference between porting temlet
-once and porting it cleanly.</p>
+<p>Đây là chương bạn sẽ còn quay lại. Bài toán migration khó nhất của temlet không phải UI — mà là phần logic
+server-side của nó mặc định là Node. <code>process.env</code>, <code>fs</code> của Node, một server sống lâu: không cái nào sống
+sót qua chuyến đi sang một Worker, và chúng trở nên vụng về khi nằm sau Tauri, nơi "backend" là một process
+được bundle chạy trên máy người dùng. Mỗi giả định như thế là một lần viết lại.</p>
+<p>Cái adapter seam của Hono chính là mẫu hình biến việc viết lại thành một <em>cấu hình</em>, chứ không phải một lần
+cài đặt lại. Chuyển các API handler của temlet sang các Hono handler runtime-agnostic đọc <code>env(c)</code> thay vì
+<code>process.env</code>, thì cùng một đoạn code có thể serve từ edge của Cloudflare hôm nay và từ một sidecar nằm sau
+lớp vỏ Tauri của bạn ngày mai — bạn thay adapter, chứ không thay app. Cái detector <code>getRuntimeKey()</code> còn cho
+phép bạn giữ cái nhánh hiếm hoi thật sự đặc thù cho runtime (chẳng hạn một capability native-only nằm sau
+Tauri) một cách tường minh và gọn gàng, thay vì bôi nó khắp codebase dưới dạng những giả định <code>process</code> mập
+mờ. Đó là khác biệt giữa port temlet một lần và port nó cho sạch.</p>
 <p><strong>Next:</strong> <a href="07-typed-routes-rpc-and-validation.html">Chapter 7 — Typed Routes, the RPC Client &amp; Validation →</a></p>
-    <nav class="pager"><a class="prev" href="05-the-middleware-onion.html"><span class="lbl">← Previous</span><span class="ttl">The Middleware Onion</span></a><a class="next" href="07-typed-routes-rpc-and-validation.html"><span class="lbl">Next →</span><span class="ttl">Typed Routes, the RPC Client &amp; Validation</span></a></nav>
+    <nav class="pager"><a class="prev" href="05-the-middleware-onion.html"><span class="lbl">← Trước</span><span class="ttl">The Middleware Onion</span></a><a class="next" href="07-typed-routes-rpc-and-validation.html"><span class="lbl">Tiếp →</span><span class="ttl">Typed Routes, the RPC Client &amp; Validation</span></a></nav>
   </article></main>
-  <aside class="toc"><nav><h4>On this page</h4>
-<a class="lvl-2" href="#61-why-it-matters">6.1 Why it matters</a>
-<a class="lvl-2" href="#62-mental-model-a-thin-translation-shell">6.2 Mental model: a thin translation shell</a>
-<a class="lvl-2" href="#63-the-simplest-adapter-cloudflare-workers">6.3 The simplest adapter: Cloudflare Workers</a>
-<a class="lvl-2" href="#64-runtime-detection-getruntimekey">6.4 Runtime detection: getRuntimeKey()</a>
-<a class="lvl-2" href="#65-the-env-seam-where-the-platform-enters">6.5 The env() seam: where the platform enters</a>
-<a class="lvl-2" href="#66-streaming-sse-still-just-response">6.6 Streaming &amp; SSE: still just Response</a>
-<a class="lvl-2" href="#67-lab-6-one-app-two-runtimes">6.7 Lab 6 — one app, two runtimes</a>
+  <aside class="toc"><nav><h4>Trong trang này</h4>
+<a class="lvl-2" href="#61-vi-sao-quan-trong">6.1 Vì sao quan trọng</a>
+<a class="lvl-2" href="#62-mental-model-mot-lop-vo-dich-mong">6.2 Mental model: một lớp vỏ dịch mỏng</a>
+<a class="lvl-2" href="#63-adapter-on-gian-nhat-cloudflare-workers">6.3 Adapter đơn giản nhất: Cloudflare Workers</a>
+<a class="lvl-2" href="#64-nhan-dien-runtime-getruntimekey">6.4 Nhận diện runtime: getRuntimeKey()</a>
+<a class="lvl-2" href="#65-uong-noi-env-noi-platform-buoc-vao">6.5 Đường nối env(): nơi platform bước vào</a>
+<a class="lvl-2" href="#66-streaming-sse-van-chi-la-response">6.6 Streaming &amp; SSE: vẫn chỉ là Response</a>
+<a class="lvl-2" href="#67-lab-6-mot-app-hai-runtime">6.7 Lab 6 — một app, hai runtime</a>
 <a class="lvl-2" href="#68-checkpoint">6.8 Checkpoint</a>
 <a class="lvl-2" href="#connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</a>
 </nav></aside>
 </div>
 <footer class="site-foot">
   <a class="foot-brand" href="https://rumitx.com" target="_blank" rel="noopener"><span class="foot-x">X</span> RumitX</a>
-  Hono Internals Handbook · grounded in <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
+  Hono Internals Handbook · neo vào <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
   @ <code>v4.12.25</code><br>
-  A <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> publication · Edge AI, human-centric design
+  Một ấn phẩm của <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> · Edge AI, human-centric design
 </footer>
-<script src="assets/app.js"></script>
+<script src="../assets/app.js"></script>
 </body>
 </html>

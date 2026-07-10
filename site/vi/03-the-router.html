@@ -1,18 +1,18 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="vi" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chapter 3 — The Router ★ · Hono Internals Handbook · RumitX</title>
-<meta name="description" content="A from-the-source handbook on Hono internals — the four-router routing engine and its RegExpRouter one-regex trick, the Context object, the compose middleware onion, multi-runtime adapters, and the type-safe routing &amp; RPC client.">
-<link rel="icon" type="image/svg+xml" href="assets/brand/logo_x.svg">
+<meta name="description" content="Cuốn sách đọc thẳng từ source về internals của Hono — routing engine bốn router và mẹo gộp-một-regex của RegExpRouter, Context object, compose middleware onion, các runtime adapter, và routing type-safe cùng RPC client.">
+<link rel="icon" type="image/svg+xml" href="../assets/brand/logo_x.svg">
 <meta name="author" content="RumitX">
 <meta name="theme-color" content="#0B1E2D">
-<link rel="alternate" hreflang="en" href="03-the-router.html">
-<link rel="alternate" hreflang="vi" href="vi/03-the-router.html">
-<link rel="alternate" hreflang="x-default" href="03-the-router.html">
-<link rel="stylesheet" href="assets/styles.css">
-<link rel="stylesheet" href="assets/code.css">
+<link rel="alternate" hreflang="en" href="../03-the-router.html">
+<link rel="alternate" hreflang="vi" href="03-the-router.html">
+<link rel="alternate" hreflang="x-default" href="../03-the-router.html">
+<link rel="stylesheet" href="../assets/styles.css">
+<link rel="stylesheet" href="../assets/code.css">
 <style>
 .lang-switch{display:inline-flex;align-items:center;gap:.1rem;padding:.15rem;
   border:1px solid var(--border);border-radius:999px;background:var(--surface);
@@ -31,14 +31,14 @@
   <a class="brand" href="index.html"><span class="mark"><span>X</span></span> Hono Internals Handbook</a>
   <span class="spacer"></span>
   <span class="meta-pill">pinned&nbsp;v4.12.25</span>
-  <div class="lang-switch"><span aria-current="true">EN</span><a href="vi/03-the-router.html" hreflang="vi">VI</a></div>
+  <div class="lang-switch"><a href="../03-the-router.html" hreflang="en">EN</a><span aria-current="true">VI</span></div>
   <button class="icon-btn" id="theme-btn" aria-label="Toggle theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
 </header>
 <div class="backdrop"></div>
 <div class="shell">
   <aside class="rail"><nav>
-<a class="brand-mini" href="index.html"><img src="assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
-<h4>Chapters</h4>
+<a class="brand-mini" href="index.html"><img src="../assets/brand/logo_x.svg" alt="" width="22" height="22"><span class="bm-name">RumitX</span><span class="bm-pub">Hono Internals Handbook</span></a>
+<h4>Chương</h4>
 <a class="" href="00-environment-and-typescript-web-refresher.html"><span class="num">00</span><span>Environment &amp; TypeScript / Web-standards Refresher</span></a>
 <a class="" href="01-mental-model-and-repo-map.html"><span class="num">01</span><span>Mental Model &amp; Repo Map</span></a>
 <a class="" href="02-app-lifecycle-and-request.html"><span class="num">02</span><span>The App Object &amp; HonoRequest</span></a>
@@ -48,32 +48,32 @@
 <a class="" href="06-runtime-adapters-and-portability.html"><span class="num">06</span><span>Runtime Adapters &amp; Portability</span></a>
 <a class="" href="07-typed-routes-rpc-and-validation.html"><span class="num">07</span><span>Typed Routes, the RPC Client &amp; Validation</span></a>
 <a class="" href="08-capstone-extending-and-staying-current.html"><span class="num">08</span><span>Capstone: Extending &amp; Staying Current</span></a>
-<h4>Reference</h4>
+<h4>Tham khảo</h4>
 <a class="" href="glossary.html"><span class="num">§</span><span>Glossary &amp; Index</span></a>
 <a href="https://github.com/rumitvn/hono-book" target="_blank" rel="noopener"><span class="num">↗</span><span>GitHub repo</span></a>
 </nav></aside>
   <main class="content"><article class="article">
-    <div class="crumbs"><a href="index.html">Handbook</a> / Chapter 03</div>
+    <div class="crumbs"><a href="index.html">Handbook</a> / Chương 03</div>
     <h1 id="chapter-3-the-router">Chapter 3 — The Router ★</h1>
 <div class="callout goal">
-<p><strong>Goal:</strong> Understand Hono's central abstraction: <strong>four routers behind one interface</strong>, and the trick
-that makes Hono one of the fastest routers in JavaScript — <code>RegExpRouter</code>'s merging of every registered
-route into a <em>single</em> regular expression. Then understand why that trick can't always apply, and how
-<code>SmartRouter</code> quietly falls back. Grounded in <code>honojs/hono</code> at <strong><code>v4.12.25</code></strong> (<code>fce483e</code>).</p>
-<p>This is the flagship chapter. Take your time; read every cited file.</p>
+<p><strong>Goal:</strong> Hiểu abstraction trung tâm của Hono: <strong>four routers behind one interface</strong>, và cái mánh
+khiến Hono trở thành một trong những router nhanh nhất trong JavaScript — việc <code>RegExpRouter</code> gộp mọi
+route đã đăng ký thành một regex <em>duy nhất</em>. Rồi hiểu vì sao mánh đó không phải lúc nào cũng áp dụng
+được, và cách <code>SmartRouter</code> lặng lẽ fallback. Neo trên <code>honojs/hono</code> tại <strong><code>v4.12.25</code></strong> (<code>fce483e</code>).</p>
+<p>Đây là chương flagship. Cứ thong thả; đọc kỹ từng file được trích dẫn.</p>
 </div>
 <hr />
-<h2 id="31-why-it-matters">3.1 Why it matters</h2>
-<p>Routing is the hot loop of a web framework: it runs on <em>every single request</em>, before any of your code.
-A slow router taxes every endpoint. Most frameworks store routes in a list or a tree and walk it per
-request — fine, but linear in the number of routes or path segments.</p>
-<p>Hono asks a sharper question: <em>what if matching a path were a single regex test, regardless of how many
-routes you registered?</em> The answer is <code>RegExpRouter</code>, and the engineering around "but sometimes that's
-impossible" is what makes the design genuinely clever rather than merely fast. Understanding it teaches
-you something that generalizes far beyond Hono: how to turn an O(n) lookup into O(1) by precompiling.</p>
+<h2 id="31-vi-sao-quan-trong">3.1 Vì sao quan trọng</h2>
+<p>Routing là hot loop của một web framework: nó chạy trên <em>mọi request</em>, trước cả code của bạn. Một router
+chậm sẽ đánh thuế lên từng endpoint. Đa số framework lưu route trong một list hoặc một tree rồi duyệt qua
+nó mỗi request — ổn thôi, nhưng tuyến tính theo số lượng route hoặc số path segment.</p>
+<p>Hono đặt một câu hỏi sắc hơn: <em>nếu như match một path chỉ là một phép test regex duy nhất, bất kể bạn đã
+đăng ký bao nhiêu route thì sao?</em> Câu trả lời là <code>RegExpRouter</code>, và phần kỹ thuật xoay quanh "nhưng đôi khi
+điều đó bất khả thi" mới là thứ khiến thiết kế này thực sự thông minh chứ không đơn thuần là nhanh. Hiểu
+được nó, bạn học được một điều vượt xa khỏi Hono: cách biến một lookup O(n) thành O(1) bằng cách precompile.</p>
 <hr />
-<h2 id="32-the-contract-one-interface-four-implementations">3.2 The contract: one interface, four implementations</h2>
-<p>Every router implements the same tiny interface (<code>src/router.ts:29</code>):</p>
+<h2 id="32-ban-hop-ong-mot-interface-bon-implementation">3.2 Bản hợp đồng: một interface, bốn implementation</h2>
+<p>Mọi router đều implement cùng một interface bé xíu (<code>src/router.ts:29</code>):</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="nx">Router</span><span class="o">&lt;</span><span class="nx">T</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="nx">name</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span>
 <span class="w">  </span><span class="nx">add</span><span class="p">(</span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">path</span><span class="o">:</span><span class="w"> </span><span class="kt">string</span><span class="p">,</span><span class="w"> </span><span class="nx">handler</span><span class="o">:</span><span class="w"> </span><span class="kt">T</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="ow">void</span><span class="w">   </span><span class="c1">// :42</span>
@@ -81,22 +81,22 @@ you something that generalizes far beyond Hono: how to turn an O(n) lookup into 
 <span class="p">}</span>
 </code></pre></div></figure>
 
-<p>Two methods. <code>add</code> registers; <code>match</code> looks up. The interface is <strong>generic in <code>T</code></strong> — the router never
-knows what a "handler" is. (Recall §2.4: the App hands it the tuple <code>[handler, routerRoute]</code>. The router
-carries that opaque payload through and hands it back.)</p>
-<p>The return type is the subtle part (<code>src/router.ts:98</code>):</p>
+<p>Hai method. <code>add</code> để đăng ký; <code>match</code> để tra cứu. Interface này <strong>generic theo <code>T</code></strong> — router không bao giờ
+biết một "handler" thực chất là gì. (Nhớ lại §2.4: App trao cho nó tuple <code>[handler, routerRoute]</code>. Router
+mang cái payload mờ đục đó xuyên qua rồi trả lại nguyên vẹn.)</p>
+<p>Kiểu trả về mới là chỗ tinh tế (<code>src/router.ts:98</code>):</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kr">type</span><span class="w"> </span><span class="nx">Result</span><span class="o">&lt;</span><span class="nx">T</span><span class="o">&gt;</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[[</span><span class="nx">T</span><span class="p">,</span><span class="w"> </span><span class="nx">ParamIndexMap</span><span class="p">][],</span><span class="w"> </span><span class="nx">ParamStash</span><span class="p">]</span><span class="w"> </span><span class="o">|</span><span class="w"> </span><span class="p">[[</span><span class="nx">T</span><span class="p">,</span><span class="w"> </span><span class="nx">Params</span><span class="p">][]]</span>
 </code></pre></div></figure>
 
-<p>A union of two shapes. Either <code>[[handler, paramIndexMap][], paramStash]</code> — handlers paired with <em>indices</em>
-into a shared array of captured strings — or <code>[[handler, paramsObject][]]</code> — handlers paired with
-ready-made param objects. The first shape is the fast one (used by <code>RegExpRouter</code>): it avoids building a
-params object until you actually call <code>c.req.param()</code>.</p>
-<p>And one special error (<code>src/router.ts:103</code>):</p>
+<p>Một union của hai hình dạng. Hoặc là <code>[[handler, paramIndexMap][], paramStash]</code> — handler đi kèm <em>chỉ số</em>
+trỏ vào một mảng dùng chung chứa các chuỗi đã capture — hoặc <code>[[handler, paramsObject][]]</code> — handler đi kèm
+object param dựng sẵn. Hình dạng thứ nhất là hình dạng nhanh (được <code>RegExpRouter</code> dùng): nó tránh việc dựng
+một object param cho tới khi bạn thực sự gọi <code>c.req.param()</code>.</p>
+<p>Và một error đặc biệt (<code>src/router.ts:103</code>):</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">class</span><span class="w"> </span><span class="nx">UnsupportedPathError</span><span class="w"> </span><span class="k">extends</span><span class="w"> </span><span class="ne">Error</span><span class="w"> </span><span class="p">{}</span>
 </code></pre></div></figure>
 
-<p>Remember this class. It is the entire hinge of the design.</p>
+<p>Nhớ lấy class này. Nó là bản lề của toàn bộ thiết kế.</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>                       ┌──────────────────────────┐
    app.get/post  ───►  │   Router&lt;T&gt; interface     │  ◄── one contract
                        │   add() / match()          │
@@ -108,56 +108,56 @@ params object until you actually call <code>c.req.param()</code>.</p>
       (simplest)      (general)      (fastest)        (the default)
 </code></pre></div></figure>
 
-<p>Let's read each — four case studies, simplest to cleverest.</p>
+<p>Đọc từng cái một — bốn case study, từ đơn giản nhất tới thông minh nhất.</p>
 <hr />
 <h2 id="33-case-study-1-linearrouter-the-baseline">3.3 Case study 1 — LinearRouter (the baseline)</h2>
-<p><code>src/router/linear-router/router.ts</code> (144 lines). The simplest thing that could work.</p>
+<p><code>src/router/linear-router/router.ts</code> (144 dòng). Thứ đơn giản nhất mà vẫn chạy được.</p>
 <ul>
-<li><code>add</code> (<code>src/router/linear-router/router.ts:15</code>) pushes <code>[method, path, handler]</code> onto an array. O(1),
-  no preprocessing.</li>
-<li><code>match</code> (<code>src/router/linear-router/router.ts:25</code>) <strong>scans the whole array</strong> on every request, testing
-  each route against the path with string checks and per-route regex for <code>:params</code>.</li>
+<li><code>add</code> (<code>src/router/linear-router/router.ts:15</code>) đẩy <code>[method, path, handler]</code> vào một mảng. O(1), không
+  cần tiền xử lý.</li>
+<li><code>match</code> (<code>src/router/linear-router/router.ts:25</code>) <strong>quét toàn bộ mảng</strong> trên mỗi request, kiểm mỗi route
+  so với path bằng string check và một regex riêng cho từng route để xử lý <code>:params</code>.</li>
 </ul>
-<p>This is O(routes) per request, but with <em>zero</em> build cost — which is why the <code>quick</code> preset uses it
-(§3.7): for a short-lived Worker that registers a few routes and handles one request, building a big regex
-isn't worth it. LinearRouter wins when registration-to-first-match time dominates.</p>
+<p>Cách này tốn O(routes) mỗi request, nhưng chi phí build bằng <em>không</em> — nên preset <code>quick</code> mới dùng nó
+(§3.7): với một Worker đời ngắn chỉ đăng ký vài route và xử lý đúng một request, việc build một regex to là
+không đáng. LinearRouter thắng khi thời gian từ lúc đăng ký tới match đầu tiên mới là thứ chi phối.</p>
 <div class="callout tip"><span class="ic">💡</span>
-<p> <strong>Tip:</strong> "the naive version is sometimes the right version" is a real engineering lesson here. Hono
-ships LinearRouter not as a teaching toy but as a genuine production choice for cold-start-sensitive
-environments.</p>
+<p> <strong>Tip:</strong> "phiên bản ngây thơ đôi khi lại là phiên bản đúng" là một bài học kỹ thuật thật sự ở đây. Hono
+ship LinearRouter không phải như một món đồ chơi để dạy học mà như một lựa chọn production thực thụ cho các
+môi trường nhạy cảm với cold start.</p>
 </div>
 <hr />
 <h2 id="34-case-study-2-trierouter-the-general-one">3.4 Case study 2 — TrieRouter (the general one)</h2>
-<p><code>src/router/trie-router/</code> — <code>router.ts</code> (28 lines) delegates to <code>node.ts</code> (234 lines), a prefix tree.</p>
+<p><code>src/router/trie-router/</code> — <code>router.ts</code> (28 dòng) ủy thác cho <code>node.ts</code> (234 dòng), một prefix tree.</p>
 <ul>
-<li><code>add</code> → <code>Node.insert</code> (<code>src/router/trie-router/node.ts:44</code>): split the path into segments and walk/build
-  a tree, one node per segment. A <code>:param</code> segment becomes a node with a pattern; <code>*</code> becomes a wildcard
-  node.</li>
-<li><code>match</code> → <code>Node.search</code> (<code>src/router/trie-router/node.ts:114</code>): walk the tree following the incoming
-  path's segments, collecting handlers and binding params as you descend.</li>
+<li><code>add</code> → <code>Node.insert</code> (<code>src/router/trie-router/node.ts:44</code>): tách path thành các segment rồi duyệt/dựng
+  một tree, mỗi segment một node. Một segment <code>:param</code> trở thành một node mang pattern; <code>*</code> trở thành một
+  node wildcard.</li>
+<li><code>match</code> → <code>Node.search</code> (<code>src/router/trie-router/node.ts:114</code>): duyệt tree lần theo các segment của path
+  đến, gom handler và bind param trong lúc đi xuống.</li>
 </ul>
-<p>Matching is O(path segments), independent of how many routes exist — a real improvement over LinearRouter.
-And crucially, <strong>a trie can represent any routing table</strong>, including the ambiguous ones that defeat
-<code>RegExpRouter</code> (next section). That universality is why TrieRouter is always the <em>fallback</em>.</p>
+<p>Match tốn O(số path segment), không phụ thuộc vào việc có bao nhiêu route — một cải thiện thực sự so với
+LinearRouter. Và quan trọng hơn cả, <strong>một trie biểu diễn được mọi routing table</strong>, kể cả những bảng nhập
+nhằng làm <code>RegExpRouter</code> bó tay (phần sau). Chính tính phổ quát đó là lý do TrieRouter luôn là <strong>fallback</strong>.</p>
 <div class="callout note"><span class="ic">🧠</span>
-<p> <strong>Mental model:</strong> a trie is the "obvious correct" data structure for routing — every path is a walk
-from the root. RegExpRouter is the "clever fast" structure. Hono keeps both because each wins a different
-race: TrieRouter never fails; RegExpRouter is faster when it can.</p>
+<p> <strong>Mental model:</strong> trie là cấu trúc dữ liệu "hiển nhiên đúng" cho routing — mỗi path là một hành trình đi
+từ root. RegExpRouter là cấu trúc "thông minh nhanh". Hono giữ cả hai vì mỗi cái thắng ở một cuộc đua khác
+nhau: TrieRouter không bao giờ hỏng; RegExpRouter nhanh hơn khi nó làm được.</p>
 </div>
 <hr />
 <h2 id="35-case-study-3-regexprouter-the-one-regex-trick">3.5 Case study 3 — RegExpRouter ★ (the one-regex trick)</h2>
-<p><code>src/router/reg-exp-router/</code> — <code>router.ts</code> (252), <code>trie.ts</code> (74), <code>node.ts</code> (162), <code>matcher.ts</code> (33). This
-is the centerpiece. The idea:</p>
+<p><code>src/router/reg-exp-router/</code> — <code>router.ts</code> (252), <code>trie.ts</code> (74), <code>node.ts</code> (162), <code>matcher.ts</code> (33). Đây
+là trung tâm của mọi thứ. Ý tưởng:</p>
 <div class="callout note">
-<p><strong>Compile <em>all</em> registered routes into a single <code>RegExp</code>.</strong> Matching a request is then one <code>path.match()</code>
-call. Which route matched is read from <em>which capture group</em> fired.</p>
+<p><strong>Compile <em>all</em> registered routes into a single <code>RegExp</code>.</strong> Match một request khi đó chỉ còn là một lời gọi
+<code>path.match()</code>. Route nào khớp thì đọc ra từ việc <em>capture group nào</em> đã kích hoạt.</p>
 </div>
-<h3 id="registration-defers-the-work">Registration defers the work</h3>
-<p><code>add</code> (<code>src/router/reg-exp-router/router.ts:132</code>) does <strong>not</strong> build the regex. It just files each route
-into <code>#middleware</code> / <code>#routes</code> maps keyed by method and path. The expensive compilation is deferred until
-the first <code>match()</code>.</p>
-<h3 id="first-match-triggers-compilation">First match triggers compilation</h3>
-<p>The <code>match</code> method (<code>src/router/reg-exp-router/matcher.ts:10</code>) is doing something sneaky on its first call:</p>
+<h3 id="ang-ky-thi-hoan-phan-viec-lai">Đăng ký thì hoãn phần việc lại</h3>
+<p><code>add</code> (<code>src/router/reg-exp-router/router.ts:132</code>) <strong>không</strong> build regex. Nó chỉ xếp mỗi route vào các map
+<code>#middleware</code> / <code>#routes</code>, key theo method và path. Phần compile tốn kém được hoãn lại tới lần <code>match()</code> đầu
+tiên.</p>
+<h3 id="match-au-tien-kich-hoat-compile">match đầu tiên kích hoạt compile</h3>
+<p>Method <code>match</code> (<code>src/router/reg-exp-router/matcher.ts:10</code>) làm một chuyện ranh mãnh ngay ở lần gọi đầu tiên:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">export</span><span class="w"> </span><span class="kd">function</span><span class="w"> </span><span class="nx">match</span><span class="o">&lt;</span><span class="nx">R</span><span class="p">,</span><span class="w"> </span><span class="nx">T</span><span class="o">&gt;</span><span class="p">(</span><span class="nx">this</span><span class="o">:</span><span class="w"> </span><span class="kt">R</span><span class="p">,</span><span class="w"> </span><span class="nx">method</span><span class="p">,</span><span class="w"> </span><span class="nx">path</span><span class="p">)</span><span class="o">:</span><span class="w"> </span><span class="nx">Result</span><span class="o">&lt;</span><span class="nx">T</span><span class="o">&gt;</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">matchers</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">this</span><span class="p">.</span><span class="nx">buildAllMatchers</span><span class="p">()</span><span class="w">   </span><span class="c1">// compile, ONCE   ← :12</span>
 
@@ -176,53 +176,55 @@ the first <code>match()</code>.</p>
 <span class="p">}</span>
 </code></pre></div></figure>
 
-<p>Two beautiful tricks here:</p>
+<p>Hai mánh đẹp ở đây:</p>
 <ol>
-<li><strong>Self-replacing method (<code>:31</code>).</strong> On the first call it compiles, then <em>overwrites <code>this.match</code></em> with
-   the fast closure. Every subsequent request skips compilation entirely — no <code>if (built)</code> check on the hot
-   path, because the function literally rewrites itself out of existence.</li>
-<li><strong>Static fast path (<code>:18</code>).</strong> Purely static routes (<code>/health</code>, <code>/api/users</code>) are kept in a plain object
-   <code>matcher[2]</code> for O(1) lookup, <em>before</em> the regex even runs. Static-heavy APIs barely touch the regex.</li>
+<li><strong>Method tự thay thế chính mình (<code>:31</code>).</strong> Ở lần gọi đầu nó compile, rồi <em>ghi đè <code>this.match</code></em> bằng
+   closure nhanh. Mọi request sau đó bỏ qua hoàn toàn bước compile — không có phép kiểm <code>if (built)</code> nào
+   trên hot path, vì hàm này tự viết lại chính nó ra khỏi sự tồn tại.</li>
+<li><strong>Đường tắt cho static (<code>:18</code>).</strong> Các route thuần static (<code>/health</code>, <code>/api/users</code>) được giữ trong một
+   object thường <code>matcher[2]</code> để lookup O(1), <em>trước cả khi</em> regex chạy. Những API nặng về static gần như
+   không đụng tới regex.</li>
 </ol>
-<h3 id="building-the-one-regex">Building the one regex</h3>
-<p><code>buildAllMatchers</code> (<code>src/router/reg-exp-router/router.ts:208</code>) compiles one matcher per HTTP method, then
-<strong>releases the route maps</strong> to free memory — after which adding a route throws "matcher is already built".
-The heavy lifting is <code>buildMatcherFromPreprocessedRoutes</code> (<code>src/router/reg-exp-router/router.ts:34</code>):</p>
+<h3 id="dung-cai-regex-duy-nhat">Dựng cái regex duy nhất</h3>
+<p><code>buildAllMatchers</code> (<code>src/router/reg-exp-router/router.ts:208</code>) compile một matcher cho mỗi HTTP method, rồi
+<strong>giải phóng các map route</strong> để trả lại bộ nhớ — sau đó thêm một route sẽ ném ra "matcher is already built".
+Phần nặng nhọc nằm ở <code>buildMatcherFromPreprocessedRoutes</code> (<code>src/router/reg-exp-router/router.ts:34</code>):</p>
 <ol>
-<li>It feeds every path into a <code>Trie</code> (<code>src/router/reg-exp-router/trie.ts</code>).</li>
-<li><code>trie.buildRegExp()</code> (<code>src/router/reg-exp-router/trie.ts:49</code>) walks that trie via
-   <code>Node.buildRegExpStr()</code> (<code>src/router/reg-exp-router/node.ts:135</code>) and emits <strong>one regex string</strong> built
-   from the routing tree, with embedded marker tokens:
-   - <code>#N</code> marks "handler N matches here" — a param node emits <code>(${pattern})@varIndex</code>
+<li>Nó đưa mọi path vào một <code>Trie</code> (<code>src/router/reg-exp-router/trie.ts</code>).</li>
+<li><code>trie.buildRegExp()</code> (<code>src/router/reg-exp-router/trie.ts:49</code>) duyệt cái trie đó qua
+   <code>Node.buildRegExpStr()</code> (<code>src/router/reg-exp-router/node.ts:135</code>) và phát ra <strong>một chuỗi regex duy nhất</strong>
+   dựng từ cây route, có nhúng sẵn các marker token:
+   - <code>#N</code> đánh dấu "handler N khớp ở đây" — một node param phát ra <code>(${pattern})@varIndex</code>
      (<code>src/router/reg-exp-router/node.ts:142</code>).
-   - A post-processing <code>replace</code> (<code>trie.ts:59</code>) rewrites each <code>#N</code> marker into an <strong>end-anchored empty
-     capture group <code>$()</code></strong>, recording in <code>indexReplacementMap</code> which capture-group position maps to which
-     handler.</li>
+   - Một bước <code>replace</code> hậu xử lý (<code>trie.ts:59</code>) viết lại mỗi marker <code>#N</code> thành một <strong>empty capture group
+     neo-cuối <code>$()</code></strong>, ghi lại trong <code>indexReplacementMap</code> xem vị trí capture-group nào ánh xạ tới handler
+     nào.</li>
 </ol>
-<p>So for routes <code>/foo</code> (handler 0) and <code>/posts/:id</code> (handler 1), you get one regex shaped roughly like:</p>
+<p>Vậy với hai route <code>/foo</code> (handler 0) và <code>/posts/:id</code> (handler 1), bạn nhận được một regex có hình dạng đại
+khái như:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">text</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code>^(?:foo$()|posts/([^/]+)$())
         └─ empty group #1 → handler 0
                          └─ empty group #2 → handler 1, with ([^/]+) capturing :id
 </code></pre></div></figure>
 
-<p>When a path matches, <code>m.indexOf('', 1)</code> (<code>matcher.ts:27</code>) finds the <em>first empty string</em> in the match
-array — that's the empty marker group that fired — and its index tells you the handler. <strong>One regex test,
-constant-ish time, no matter how many routes you registered.</strong> That is the whole trick.</p>
-<h3 id="when-the-trick-fails">When the trick fails</h3>
-<p>A single regex can't disambiguate every routing table. Two routes whose params collide at the same
-position — e.g. <code>/:user/entries</code> and <code>/entry/:name</code>, where <code>/entry/entries</code> is genuinely ambiguous — can't
-be encoded as one unambiguous regex. When <code>Node.insert</code> detects such a conflict it throws <code>PATH_ERROR</code>,
-which <code>buildMatcherFromPreprocessedRoutes</code> converts into <code>UnsupportedPathError</code>
-(<code>src/router/reg-exp-router/router.ts</code> in the <code>trie.insert</code> try/catch). RegExpRouter does <strong>not</strong> degrade
-gracefully — it refuses. That refusal is a feature, because of the next case study.</p>
+<p>Khi một path khớp, <code>m.indexOf('', 1)</code> (<code>matcher.ts:27</code>) tìm ra <em>chuỗi rỗng đầu tiên</em> trong mảng kết quả
+match — đó chính là empty marker group đã kích hoạt — và chỉ số của nó cho bạn biết handler. <strong>Một phép test
+regex, thời gian gần như hằng số, bất kể bạn đăng ký bao nhiêu route.</strong> Đó là toàn bộ mánh khóe.</p>
+<h3 id="khi-manh-nay-that-bai">Khi mánh này thất bại</h3>
+<p>Một regex đơn lẻ không thể phân định mọi routing table. Hai route mà param của chúng va nhau ở cùng một vị
+trí — ví dụ <code>/:user/entries</code> và <code>/entry/:name</code>, nơi <code>/entry/entries</code> thực sự nhập nhằng — không thể mã hóa
+thành một regex không nhập nhằng. Khi <code>Node.insert</code> phát hiện một xung đột như thế, nó ném <code>PATH_ERROR</code>, và
+<code>buildMatcherFromPreprocessedRoutes</code> chuyển nó thành <code>UnsupportedPathError</code>
+(<code>src/router/reg-exp-router/router.ts</code>, trong khối try/catch quanh <code>trie.insert</code>). RegExpRouter <strong>không</strong>
+xuống cấp một cách êm ái — nó từ chối thẳng. Sự từ chối đó là một tính năng, nhờ vào case study kế tiếp.</p>
 <hr />
 <h2 id="36-case-study-4-smartrouter-the-default">3.6 Case study 4 — SmartRouter (the default)</h2>
-<p><code>src/router/smart-router/router.ts</code> (70 lines). This is the router <code>new Hono()</code> actually uses (recall
+<p><code>src/router/smart-router/router.ts</code> (70 dòng). Đây là router mà <code>new Hono()</code> thực sự dùng (nhớ lại
 <code>src/hono.ts:31</code>: <code>new SmartRouter({ routers: [new RegExpRouter(), new TrieRouter()] })</code>).</p>
 <ul>
-<li><code>add</code> (<code>src/router/smart-router/router.ts:13</code>) just queues <code>[method, path, handler]</code> — it doesn't commit
-  to a router yet.</li>
-<li><code>match</code> (<code>src/router/smart-router/router.ts:21</code>) runs a <strong>tournament</strong> on the first request:</li>
+<li><code>add</code> (<code>src/router/smart-router/router.ts:13</code>) chỉ xếp <code>[method, path, handler]</code> vào hàng đợi — nó chưa
+  commit vào router nào cả.</li>
+<li><code>match</code> (<code>src/router/smart-router/router.ts:21</code>) chạy một <strong>giải đấu</strong> ngay ở request đầu tiên:</li>
 </ul>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="k">for</span><span class="w"> </span><span class="p">(;</span><span class="w"> </span><span class="nx">i</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="nx">len</span><span class="p">;</span><span class="w"> </span><span class="nx">i</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="kd">const</span><span class="w"> </span><span class="nx">router</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nx">routers</span><span class="p">[</span><span class="nx">i</span><span class="p">]</span>
@@ -240,59 +242,59 @@ gracefully — it refuses. That refusal is a feature, because of the next case s
 <span class="p">}</span>
 </code></pre></div></figure>
 
-<p>It tries <code>RegExpRouter</code> first. If that throws <code>UnsupportedPathError</code> (the §3.5 refusal), it <code>continue</code>s to
-<code>TrieRouter</code>, which never refuses. Once a router succeeds, SmartRouter <strong>binds <code>this.match</code> to the
-winner</strong> (<code>src/router/smart-router/router.ts:46</code>) and drops the rest — so, like RegExpRouter, every later
-request skips the tournament entirely.</p>
+<p>Nó thử <code>RegExpRouter</code> trước. Nếu cái đó ném <code>UnsupportedPathError</code> (chính là cú từ chối ở §3.5), nó
+<code>continue</code> sang <code>TrieRouter</code>, cái không bao giờ từ chối. Khi một router thành công, SmartRouter <strong>bind
+<code>this.match</code> vào kẻ thắng cuộc</strong> (<code>src/router/smart-router/router.ts:46</code>) và bỏ đi phần còn lại — nên, giống
+như RegExpRouter, mọi request về sau bỏ qua hoàn toàn giải đấu.</p>
 <div class="callout note"><span class="ic">🧠</span>
-<p> <strong>Mental model:</strong> SmartRouter is "optimistic with a safety net." It bets on the fast router, and the
-<code>UnsupportedPathError</code> is the signal that says "your routes are too ambiguous for the trick — use the
-general one." You pay the tournament cost <em>once</em>. This is why you rarely think about Hono's router at
-all: the default quietly gives you RegExpRouter speed when your routes allow it, and TrieRouter
-correctness when they don't.</p>
+<p> <strong>Mental model:</strong> SmartRouter là kiểu "lạc quan nhưng có lưới an toàn." Nó đặt cược vào router nhanh, và
+<code>UnsupportedPathError</code> là tín hiệu nói rằng "route của bạn quá nhập nhằng cho cái mánh này — dùng cái tổng
+quát đi." Bạn trả cái giá của giải đấu đúng <em>một lần</em>. Đây là lý do bạn hiếm khi phải bận tâm về router của
+Hono: mặc định lặng lẽ cho bạn tốc độ của RegExpRouter khi route cho phép, và sự đúng đắn của TrieRouter
+khi không.</p>
 </div>
 <hr />
-<h2 id="37-presets-choosing-a-different-default">3.7 Presets: choosing a different default</h2>
-<p>Two presets swap the router for different trade-offs (read both — they're ~20 lines each):</p>
+<h2 id="37-preset-chon-mot-default-khac">3.7 Preset: chọn một default khác</h2>
+<p>Hai preset đánh đổi router lấy những trade-off khác nhau (đọc cả hai — mỗi cái chừng ~20 dòng):</p>
 <ul>
-<li><code>hono/quick</code> (<code>src/preset/quick.ts:13</code>) — <code>SmartRouter([LinearRouter, TrieRouter])</code>. No regex build:
-  optimized for environments that handle <strong>one request per worker</strong> (classic FaaS cold starts), where
-  build cost would never amortize.</li>
-<li><code>hono/tiny</code> (<code>src/preset/tiny.ts:11</code>) — <code>PatternRouter</code> alone (<code>src/router/pattern-router/router.ts</code>,
-  60 lines: one regex <em>per route</em>). The smallest code size — for bundle-size-critical deploys.</li>
+<li><code>hono/quick</code> (<code>src/preset/quick.ts:13</code>) — <code>SmartRouter([LinearRouter, TrieRouter])</code>. Không build regex:
+  tối ưu cho những môi trường xử lý <strong>một request cho mỗi worker</strong> (kiểu cold start FaaS kinh điển), nơi chi
+  phí build sẽ chẳng bao giờ khấu hao nổi.</li>
+<li><code>hono/tiny</code> (<code>src/preset/tiny.ts:11</code>) — chỉ mỗi <code>PatternRouter</code> (<code>src/router/pattern-router/router.ts</code>,
+  60 dòng: một regex <em>cho mỗi route</em>). Kích thước code nhỏ nhất — cho những deploy khắt khe về bundle-size.</li>
 </ul>
-<p>The base <code>hono</code> import is tuned for long-lived servers/Workers that handle many requests, so amortizing a
-one-time regex build is the right call.</p>
+<p>Bản import <code>hono</code> cơ bản được chỉnh cho các server/Worker sống lâu xử lý nhiều request, nên khấu hao một lần
+build regex là lựa chọn đúng.</p>
 <div class="table-wrap"><table>
 <thead>
 <tr>
 <th>Preset</th>
-<th>Routers</th>
-<th>Best for</th>
+<th>Router</th>
+<th>Phù hợp nhất cho</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>hono</code> (default)</td>
+<td><code>hono</code> (mặc định)</td>
 <td>Smart(RegExp, Trie)</td>
-<td>long-lived servers / Workers — amortized speed</td>
+<td>server / Worker sống lâu — tốc độ đã khấu hao</td>
 </tr>
 <tr>
 <td><code>hono/quick</code></td>
 <td>Smart(Linear, Trie)</td>
-<td>one-shot FaaS — no build cost</td>
+<td>FaaS một-phát — không chi phí build</td>
 </tr>
 <tr>
 <td><code>hono/tiny</code></td>
 <td>Pattern</td>
-<td>smallest bundle</td>
+<td>bundle nhỏ nhất</td>
 </tr>
 </tbody>
 </table></div>
 <hr />
-<h2 id="38-lab-3-watch-smartrouter-pick-a-router">3.8 Lab 3 — watch SmartRouter pick a router</h2>
-<p><code>SmartRouter.name</code> updates to record its winner (<code>src/router/smart-router/router.ts</code> sets
-<code>SmartRouter + &lt;winner&gt;</code>). Exploit that to <em>see</em> the fallback happen:</p>
+<h2 id="38-lab-3-xem-smartrouter-chon-router">3.8 Lab 3 — xem SmartRouter chọn router</h2>
+<p><code>SmartRouter.name</code> được cập nhật để ghi lại kẻ thắng cuộc (<code>src/router/smart-router/router.ts</code> gán
+<code>SmartRouter + &lt;winner&gt;</code>). Tận dụng điều đó để <em>thấy tận mắt</em> cú fallback diễn ra:</p>
 <figure class="codeblock"><div class="cb-bar"><span class="dot"></span><span class="cb-lang">TypeScript</span><button class="cb-copy" type="button">copy</button></div><div class="codehilite"><pre><span></span><code><span class="c1">// router-probe.ts</span>
 <span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">RegExpRouter</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono/router/reg-exp-router&#39;</span>
 <span class="k">import</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nx">TrieRouter</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="kr">from</span><span class="w"> </span><span class="s1">&#39;hono/router/trie-router&#39;</span>
@@ -316,64 +318,63 @@ one-time regex build is the right call.</p>
 </code></pre></div></figure>
 
 <div class="callout lab"><span class="ic">🧪</span>
-<p> <strong>Record in <code>labs/lab3-router.md</code>:</strong> the two printed router names. Expected: the clean table resolves
-to <code>SmartRouter + RegExpRouter</code>, while the ambiguous table forces <code>SmartRouter + TrieRouter</code>. You've just
-watched <code>UnsupportedPathError</code> trigger the fallback from §3.6 — the single most important control-flow in
-Hono's routing.</p>
+<p> <strong>Ghi vào <code>labs/lab3-router.md</code>:</strong> hai tên router được in ra. Kỳ vọng: bảng route sạch cho ra
+<code>SmartRouter + RegExpRouter</code>, còn bảng nhập nhằng buộc phải là <code>SmartRouter + TrieRouter</code>. Bạn vừa chứng
+kiến <code>UnsupportedPathError</code> kích hoạt cú fallback từ §3.6 — luồng điều khiển quan trọng bậc nhất trong
+routing của Hono.</p>
 </div>
 <hr />
 <h2 id="39-checkpoint">3.9 Checkpoint</h2>
 <ol>
-<li>State the <code>Router&lt;T&gt;</code> interface from memory. Why is it generic in <code>T</code>?</li>
-<li>In one sentence: what does <code>RegExpRouter</code> do that the other routers don't?</li>
-<li>What are the two "tricks" in <code>matcher.ts</code> — the self-replacing method and the static map — and what does
-   each save?</li>
-<li>When the merged regex matches, how does Hono know <em>which</em> route matched? (Name the marker and the line.)</li>
-<li>What does <code>UnsupportedPathError</code> signal, who throws it, and who catches it?</li>
-<li>Which router does <code>new Hono()</code> use by default, and which does <code>hono/quick</code> use — and why the difference?</li>
+<li>Trình bày interface <code>Router&lt;T&gt;</code> từ trí nhớ. Vì sao nó generic theo <code>T</code>?</li>
+<li>Trong một câu: <code>RegExpRouter</code> làm điều gì mà các router khác không làm?</li>
+<li>Hai "mánh" trong <code>matcher.ts</code> là gì — method tự thay thế và static map — và mỗi cái tiết kiệm được gì?</li>
+<li>Khi regex đã gộp khớp, làm sao Hono biết <em>route nào</em> đã khớp? (Nêu tên marker và dòng.)</li>
+<li><code>UnsupportedPathError</code> báo hiệu điều gì, ai ném nó, và ai bắt nó?</li>
+<li><code>new Hono()</code> dùng router nào theo mặc định, còn <code>hono/quick</code> dùng cái nào — và vì sao lại khác nhau?</li>
 </ol>
 <div class="callout note">
-<p>If #2 or #4 is shaky, re-read §3.5. If #5 is shaky, re-read §3.5–§3.6 together — the throw and the catch
-are two halves of one idea.</p>
+<p>Nếu câu #2 hoặc #4 còn lung lay, đọc lại §3.5. Nếu câu #5 còn lung lay, đọc §3.5–§3.6 cùng nhau — cú ném và
+cú bắt là hai nửa của cùng một ý tưởng.</p>
 </div>
 <hr />
 <h2 class="connect" id="connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</h2>
-<p>Next.js's router is a black box: file-system conventions compiled by the framework, with performance you
-can't see or reason about. You trust it works. Hono hands you the opposite — a router you can <em>read in an
-afternoon</em> and whose performance model you can explain.</p>
-<p>That matters for temlet's web→native journey in a specific way. On the edge (Workers), request latency is
-dominated by cold starts and per-request overhead — exactly what RegExpRouter's precompile-once + static
-fast-path optimizes, and exactly what <code>hono/quick</code> trades away when you're one-shot. Behind a <strong>Tauri</strong>
-shell, where the server is long-lived and local, you'd want the default's amortized speed. The lesson
-isn't "Hono is fast"; it's that the router's strategy is a <em>knob you control</em>, chosen for the runtime
-you're targeting. When you port temlet's routing onto something like this, you stop hoping the framework
-made the right call and start making it yourself — per deployment target.</p>
+<p>Router của Next.js là một hộp đen: các quy ước file-system được framework compile, với hiệu năng bạn không
+nhìn thấy cũng không suy luận được. Bạn tin là nó chạy. Hono trao cho bạn điều ngược lại — một router bạn
+<em>đọc hết trong một buổi chiều</em> và có thể giải thích được mô hình hiệu năng của nó.</p>
+<p>Điều đó có ý nghĩa với hành trình web→native của temlet theo một cách rất cụ thể. Trên edge (Workers), độ
+trễ request bị chi phối bởi cold start và overhead mỗi request — đúng cái mà precompile-một-lần + đường tắt
+static của RegExpRouter tối ưu, và cũng đúng cái mà <code>hono/quick</code> đánh đổi đi khi bạn chạy một-phát. Đằng sau
+một lớp vỏ <strong>Tauri</strong>, nơi server sống lâu và chạy cục bộ, bạn sẽ muốn tốc độ đã khấu hao của bản mặc định.
+Bài học không phải là "Hono nhanh"; mà là chiến lược của router là một <em>cái núm bạn điều khiển</em>, chọn theo
+runtime bạn đang nhắm tới. Khi bạn port routing của temlet lên một thứ như thế này, bạn thôi hy vọng
+framework đã chọn đúng và bắt đầu tự mình chọn — theo từng deployment target.</p>
 <p><strong>Next:</strong> <a href="04-context-and-responses.html">Chapter 4 — Context &amp; Building Responses →</a></p>
-    <nav class="pager"><a class="prev" href="02-app-lifecycle-and-request.html"><span class="lbl">← Previous</span><span class="ttl">The App Object &amp; HonoRequest</span></a><a class="next" href="04-context-and-responses.html"><span class="lbl">Next →</span><span class="ttl">Context &amp; Building Responses</span></a></nav>
+    <nav class="pager"><a class="prev" href="02-app-lifecycle-and-request.html"><span class="lbl">← Trước</span><span class="ttl">The App Object &amp; HonoRequest</span></a><a class="next" href="04-context-and-responses.html"><span class="lbl">Tiếp →</span><span class="ttl">Context &amp; Building Responses</span></a></nav>
   </article></main>
-  <aside class="toc"><nav><h4>On this page</h4>
-<a class="lvl-2" href="#31-why-it-matters">3.1 Why it matters</a>
-<a class="lvl-2" href="#32-the-contract-one-interface-four-implementations">3.2 The contract: one interface, four implementations</a>
+  <aside class="toc"><nav><h4>Trong trang này</h4>
+<a class="lvl-2" href="#31-vi-sao-quan-trong">3.1 Vì sao quan trọng</a>
+<a class="lvl-2" href="#32-ban-hop-ong-mot-interface-bon-implementation">3.2 Bản hợp đồng: một interface, bốn implementation</a>
 <a class="lvl-2" href="#33-case-study-1-linearrouter-the-baseline">3.3 Case study 1 — LinearRouter (the baseline)</a>
 <a class="lvl-2" href="#34-case-study-2-trierouter-the-general-one">3.4 Case study 2 — TrieRouter (the general one)</a>
 <a class="lvl-2" href="#35-case-study-3-regexprouter-the-one-regex-trick">3.5 Case study 3 — RegExpRouter ★ (the one-regex trick)</a>
-<a class="lvl-3" href="#registration-defers-the-work">Registration defers the work</a>
-<a class="lvl-3" href="#first-match-triggers-compilation">First match triggers compilation</a>
-<a class="lvl-3" href="#building-the-one-regex">Building the one regex</a>
-<a class="lvl-3" href="#when-the-trick-fails">When the trick fails</a>
+<a class="lvl-3" href="#ang-ky-thi-hoan-phan-viec-lai">Đăng ký thì hoãn phần việc lại</a>
+<a class="lvl-3" href="#match-au-tien-kich-hoat-compile">match đầu tiên kích hoạt compile</a>
+<a class="lvl-3" href="#dung-cai-regex-duy-nhat">Dựng cái regex duy nhất</a>
+<a class="lvl-3" href="#khi-manh-nay-that-bai">Khi mánh này thất bại</a>
 <a class="lvl-2" href="#36-case-study-4-smartrouter-the-default">3.6 Case study 4 — SmartRouter (the default)</a>
-<a class="lvl-2" href="#37-presets-choosing-a-different-default">3.7 Presets: choosing a different default</a>
-<a class="lvl-2" href="#38-lab-3-watch-smartrouter-pick-a-router">3.8 Lab 3 — watch SmartRouter pick a router</a>
+<a class="lvl-2" href="#37-preset-chon-mot-default-khac">3.7 Preset: chọn một default khác</a>
+<a class="lvl-2" href="#38-lab-3-xem-smartrouter-chon-router">3.8 Lab 3 — xem SmartRouter chọn router</a>
 <a class="lvl-2" href="#39-checkpoint">3.9 Checkpoint</a>
 <a class="lvl-2" href="#connect-to-your-past-temlet-webnative">🔌 Connect to your past (temlet web→native)</a>
 </nav></aside>
 </div>
 <footer class="site-foot">
   <a class="foot-brand" href="https://rumitx.com" target="_blank" rel="noopener"><span class="foot-x">X</span> RumitX</a>
-  Hono Internals Handbook · grounded in <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
+  Hono Internals Handbook · neo vào <a href="https://github.com/honojs/hono/tree/v4.12.25" target="_blank" rel="noopener">honojs/hono</a>
   @ <code>v4.12.25</code><br>
-  A <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> publication · Edge AI, human-centric design
+  Một ấn phẩm của <a href="https://rumitx.com" target="_blank" rel="noopener">RumitX</a> · Edge AI, human-centric design
 </footer>
-<script src="assets/app.js"></script>
+<script src="../assets/app.js"></script>
 </body>
 </html>
